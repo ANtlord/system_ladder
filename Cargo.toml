@@ -1,0 +1,6 @@
+[package]
+name = "system_ladder"
+version = "0.1.0"
+authors = ["antlord <antlord92@gmail.com>"]
+
+[dependencies]
