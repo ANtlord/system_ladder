@@ -1,71 +1,48 @@
-use std::any::TypeId;
+// static input: str = "EASY****";
 
-macro_rules! call {
-    // accept like
-    // fn callable(self, a: i32) {
-    //      print!("Hello");
-    // }
-    (fn $fname:ident (self, $($farg:ident: $farg_type:ty),*) $fbody:expr) => (
-        call!(@internal fn $fname (self, $($farg: $farg_type),*) -> () {$fbody});
-    );
-    // accept like
-    // fn callable(a: i32) {
-    //      print!("Hello");
-    // }
-    (fn $fname:ident ($($farg:ident: $farg_type:ty),*) $fbody:expr) => (
-        call!(@internal fn $fname (, $($farg: $farg_type),*) -> () {$fbody});
-    );
-    (@internal fn $fname:ident ($($self_arg:ident)*, $($farg:ident: $farg_type:ty),*) -> $fres:ty {$($fbody:expr)*}) => (
-        fn $fname($($self_arg,),* $($farg: $farg_type),*) -> $fres {
-            println!(stringify!($fname));
-            $(
-                println!(stringify!($self_arg));
-            )*
-            println!("123");
-        }
-    );
-    // Decorator doubles result of definad function.
-    (fn $fname:ident ($($farg:ident: $farg_type:ty),*) -> $fres:ty {$($fbody:tt)*}) => (
-        fn $fname($($farg: $farg_type),*) -> $fres {
-            let res = (|| {
-                $($fbody)*
-            })();
-            return res * 4;
-        }
-    );
-}
-
-struct point(i32, i32);
-
-impl point {
-    call! {
-        fn callee2(a: i32, b: i32) {
-            println!("Hello, world!!!");
-            println!("Hello, world!!!");
-        }
-    }
-    call! {
-        fn callee(self, a: i32, b: i32) {
-            println!("Hello, world!!!");
-            println!("Hello, world!!!");
-        }
-    }
-    call! {
-        fn callee3(a: i32, b: i32) -> i32 {
-            if a == 1 {
-                let c = a + b;
-                c
-            } else {
-                let d = a * b;
-                d
-            }
-        }
-    }
-}
+mod list;
+use list::List;
+use std::io;
+use std::{
+    cell::Cell,
+    // ptr::NonNull,
+    // ptr::null_mut,
+    // mem::transmute,
+};
 
 fn main() {
-    let p = point(0, 0);
-    p.callee(1, 2);
-    point::callee2(1, 2);
-    print!("{}", point::callee3(2, 3));
+    let l: List<u8> = List::new();
+    // let mut item = Item{ inner: None };
+    // let list1 = RefCell::new(List::new());
+    // for i in 0u8..5 {
+        // list1.borrow_mut().add(i);
+    // }
+
+    // let mut list1_mut = list1.borrow_mut();
+    // let mut iter = list1_mut.iter();
+    // // list1.borrow_mut().remove(&mut iter);
+
+    // // iter.next();
+    // let mut counter = 0;
+    // loop {
+        // match iter.next() {
+            // Some(x) => {
+                // println!("{}", x);
+
+                // counter += 1;
+                // if counter == 8 { break; }
+            // }
+            // None => break,
+        // };
+        // // list1_mut.remove(&mut iter);
+    // }
+
+    // while let Some(y) = {iter}.next() {
+        // println!("{}", y);
+
+        // counter += 1;
+        // if counter == 8 { break; }
+
+        // list1.remove(&mut iter);
+    // }
 }
