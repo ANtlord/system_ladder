@@ -1,5 +1,4 @@
 use super::item::Link;
-use super::item::Item;
 
 
 pub struct Iter<'a, T: 'a> {

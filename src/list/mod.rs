@@ -33,7 +33,7 @@ impl<T> List<T> {
         self.tail = Link::from_link(&self.head);
     }
 
-    fn push_back(&mut self, value: T) {
+    pub fn push_back(&mut self, value: T) {
         if self.is_empty() {
             self.create_first(value);
         } else {
@@ -42,7 +42,7 @@ impl<T> List<T> {
         }
     }
 
-    fn push_front(&mut self, value: T) {
+    pub fn push_front(&mut self, value: T) {
         if self.is_empty() {
             self.create_first(value);
         } else {
@@ -81,11 +81,11 @@ impl<T> List<T> {
         }
     }
 
-    fn back(&self) -> Option<&T> {
+    pub fn back(&self) -> Option<&T> {
         self.tail.get_value()
     }
     
-    fn front(&self) -> Option<&T> {
+    pub fn front(&self) -> Option<&T> {
         self.head.get_value()
     }
 }
