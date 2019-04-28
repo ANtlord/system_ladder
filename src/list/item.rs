@@ -22,7 +22,7 @@ impl<T> Link<T> {
         self.get_ptr().is_null()
     }
 
-    fn get_mut(&mut self) -> Option<&mut Item<T>> {
+    pub fn get_mut(&mut self) -> Option<&mut Item<T>> {
         if self.get_ptr().is_null() {
             None
         } else {
@@ -38,7 +38,7 @@ impl<T> Link<T> {
         }
     }
 
-    fn get_ptr(&self) -> *mut Item<T> {
+    pub fn get_ptr(&self) -> *mut Item<T> {
         self.0.get()
     }
 
@@ -91,6 +91,10 @@ impl<T> Link<T> {
                 (*ptr).remove()
             })
         }
+    }
+
+    pub fn next_mut(&mut self) -> Option<&mut Link<T>> {
+        Some(&mut self.get_mut()?.next)
     }
 
     pub fn next(&self) -> Option<&Link<T>> {
@@ -150,6 +154,10 @@ impl<T> Item<T> {
 
     pub fn get(&self) -> &T {
         &self.value
+    }
+
+    pub fn get_mut(&mut self) -> &mut T {
+        &mut self.value
     }
 }
 

@@ -6,18 +6,20 @@ mod iter;
 use std::mem::replace;
 use self::item::Link;
 use self::iter::Iter;
+use self::iter::Cursor;
 
 pub struct List<T> {
-    head: Link<T>,
+    pub head: Link<T>,
     tail: Link<T>,
 }
 
 impl<T> List<T> {
+    pub fn cursor(&mut self) -> Cursor<T> {
+        return Cursor::new(&self.head)
+    }
+
     pub fn iter(&self) -> Iter<T> {
-        Iter{
-            current: &self.head,
-            is_next_called: false,
-        }
+        return Iter::new(&self.head)
     }
 
     pub fn new() -> Self {
@@ -89,6 +91,7 @@ impl<T> List<T> {
         self.head.get_value()
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,4 +173,17 @@ mod tests {
         assert_eq!(list.iter().collect::<Vec<&u8>>(), vec![&000, &111, &222]);
     }
 
+    //#[test]
+    //fn insert_next() {
+    //    let mut list: List<u8> = List::new();
+    //    list.push_back(111);
+    //    list.push_back(222);
+    //    list.push_front(000);
+
+    //    let mut iter = list.iter_mut();
+    //    assert_eq!(iter.next(), Some(&mut 111));
+    //    iter.insert_next(66);
+    //    assert_eq!(iter.next(), Some(&mut 66));
+    //    assert_eq!(iter.next(), Some(&mut 222));
+    //}
 }

@@ -22,21 +22,21 @@ fn to_int(val: &str) -> u32 {
     val.trim().parse().expect(&format!("Can't convert `{}` to int", val))
 }
 
-fn fill_process(p: &mut Process, data: &str) {
-    let mut data_parts = data.split(':');
-    if let Some(before_colon) = data_parts.next() {
+fn fill_process(p: &mut Process, status_file_line: &str) {
+    let mut line_parts = status_file_line.split(':');
+    if let Some(before_colon) = line_parts.next() {
         match before_colon {
-            "Name" => p.name = data_parts.next().unwrap().trim().to_owned(),
-            "Pid" => p.pid = to_int(data_parts.next().unwrap()),
-            "PPid" => p.ppid = to_int(data_parts.next().unwrap()),
+            "Name" => p.name = line_parts.next().unwrap().trim().to_owned(),
+            "Pid" => p.pid = to_int(line_parts.next().unwrap()),
+            "PPid" => p.ppid = to_int(line_parts.next().unwrap()),
             _ => return,
         }
     }
 }
 
 impl Process {
-    fn new(path: &str) -> Self {
-        let file = fs::File::open(&path).expect(&format!("Can't open '{}'", path));
+    fn new(status_file_path: &str) -> Self {
+        let file = fs::File::open(&status_file_path).expect(&format!("Can't open '{}'", status_file_path));
         let bufreader = BufReader::new(file);
         let mut p = Process{name: "".to_owned(), pid: 0, ppid: 0};
         bufreader.lines().filter_map(|x| x.ok()).for_each(|x| fill_process(&mut p, &x));
@@ -44,13 +44,12 @@ impl Process {
     }
 }
 
-pub fn get_processes(uid: u32) {
-    let proc_dir_entries = fs::read_dir("/proc/").unwrap();
-    let entries = proc_dir_entries.filter_map(|x| x.ok()).filter(|x| is_user_folder(x, uid));
-
-    for e in entries {
-        println!("{}", e.path().to_str().unwrap());
-    }
+pub fn get_processes(uid: u32) -> impl Iterator<Item=Process> {
+    let proc_dir_reading = fs::read_dir("/proc/").unwrap();
+    let proc_dir_entries = proc_dir_reading.filter_map(|x| x.ok()).filter(
+        move |x| is_user_folder(x, uid) && is_process_folder(x)
+    );
+    proc_dir_entries.map(|x| Process::new(x.path().join("status").to_str().unwrap()))
 }
 
 fn is_process_folder(e: &fs::DirEntry) -> bool {
