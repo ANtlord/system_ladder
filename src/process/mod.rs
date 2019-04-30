@@ -13,9 +13,9 @@ fn is_user_folder(dir: &fs::DirEntry, uid: u32) -> bool {
 
 #[derive(Debug)]
 pub struct Process {
-   name: String,
-   pid: u32,
-   ppid: u32,
+   pub name: String,
+   pub pid: u32,
+   pub ppid: u32,
 }
 
 fn to_int(val: &str) -> u32 {
