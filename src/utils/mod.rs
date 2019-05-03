@@ -1,3 +1,5 @@
+pub mod vector;
+
 use std::mem;
 
 fn gcd(mut left: u64, mut right: u64) -> u64 {
