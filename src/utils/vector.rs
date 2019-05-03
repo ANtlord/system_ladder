@@ -57,4 +57,12 @@ mod tests {
         let since = move_to_end_by(&26, &mut numbers, |x, y| x == y);
         assert_eq!(since.unwrap(), numbers.len());
     }
+
+    #[test]
+    fn odds_more_than_evens() {
+        let mut numbers = vec![0, 0, 0, 0, 3, 2, 0];
+        let since = move_to_end_by(&0, &mut numbers, |x, y| x == y);
+        assert_eq!(since.unwrap(), 2);
+        assert_eq!(numbers[since.unwrap() .. ], [0, 0, 0, 0, 0]);
+    }
 }
