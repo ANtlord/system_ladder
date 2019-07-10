@@ -74,7 +74,8 @@ pub fn getpwnam(name: &str) -> UserDataResult {
 }
 
 pub fn getpwuid(id: u32) -> UserDataResult {
-    for line in getpwent().map_err(|x| PasswdError::IO(x))? {
+    let iter = getpwent().map_err(|x| PasswdError::IO(x))?;
+    for line in iter {
         let user: UserData = line?;
         if user.user_id == id {
             return Ok(user);
