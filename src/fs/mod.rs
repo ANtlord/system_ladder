@@ -37,13 +37,13 @@ impl From<io::Error> for NftwErr {
 }
 
 enum TypeFlag {
-    FTW_F,
-    FTW_D,
-    FTW_DNR,
-    FTW_DP,
-    FTW_NS,
-    FTW_SL,
-    FTW_SLN,
+    File, // FTW_F
+    Directory, // FTW_D
+    UnreadableDirectory, // FTW_DNR
+    PostReadableDirectory, // FTW_DP
+    MetadataFailed, // FTW_NS
+    Symlink, // FTW_SL
+    SymlinkAbsentFile, // FTW_SLN
 }
 
 enum CallbackResult {
@@ -64,15 +64,15 @@ fn metadata_ok(
     flags: Flag
 ) -> (io::Result<fs::Metadata>, TypeFlag) {
     let flag = if meta_ok.is_file() {
-        TypeFlag::FTW_F
+        TypeFlag::File
     } else if meta_ok.is_dir() {
         match from_path.read_dir() {
-            Ok(_) if flags & FTW_DEPTH != 0 => TypeFlag::FTW_DP,
-            Ok(_) => TypeFlag::FTW_D,
-            Err(_) => TypeFlag::FTW_DNR,
+            Ok(_) if flags & FTW_DEPTH != 0 => TypeFlag::PostReadableDirectory,
+            Ok(_) => TypeFlag::Directory,
+            Err(_) => TypeFlag::UnreadableDirectory,
         }
     } else {
-        TypeFlag::FTW_F
+        TypeFlag::File
     };
     (Ok(meta_ok), flag)
 }
@@ -83,9 +83,9 @@ fn metadata_err(
 ) -> (io::Result<fs::Metadata>, TypeFlag) {
     let meta = from_path.symlink_metadata();
     let flag = match meta {
-        Ok(_) if flags & FTW_PHYS != 0 => TypeFlag::FTW_SL,
-        Ok(_) => TypeFlag::FTW_SLN,
-        Err(_) => TypeFlag::FTW_NS,
+        Ok(_) if flags & FTW_PHYS != 0 => TypeFlag::Symlink,
+        Ok(_) => TypeFlag::SymlinkAbsentFile,
+        Err(_) => TypeFlag::MetadataFailed,
     };
     (meta, flag)
 }
@@ -135,14 +135,16 @@ fn handle_dir_content(
     type_flag: &TypeFlag,
 ) -> NftwResult {
     match type_flag {
-        TypeFlag::FTW_SLN => {
+        TypeFlag::SymlinkAbsentFile => {
             let path_buf = fs::read_link(current_item_path)?;
             if path_buf.metadata()?.is_dir() {
                 read_dir(path_buf.as_path(), action, nopenfd, flags, ftw)?;
             }
             DEFALT_NFTW
         },
-        TypeFlag::FTW_D | TypeFlag::FTW_DP => read_dir(current_item_path, action, nopenfd, flags, ftw),
+        TypeFlag::Directory | TypeFlag::PostReadableDirectory => read_dir(
+            current_item_path, action, nopenfd, flags, ftw
+        ),
         _ => DEFALT_NFTW,
     }
 }
