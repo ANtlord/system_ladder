@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::io::BufReader;
 use std::io::BufRead;
+use std::io::BufReader;
 use std::io::Error as IOError;
 use std::io::Result as IOResult;
 
@@ -14,9 +14,7 @@ pub struct UserData {
     pub pw_shell: String,
 }
 
-impl UserData{
-    
-}
+impl UserData {}
 
 pub enum PasswdError {
     DoesNotExist,
@@ -26,7 +24,7 @@ pub enum PasswdError {
 
 type UserDataResult = Result<UserData, PasswdError>;
 
-fn getpwent() -> Result<impl Iterator<Item=UserDataResult>, IOError> {
+fn getpwent() -> Result<impl Iterator<Item = UserDataResult>, IOError> {
     let passwd_path = "/etc/passwd";
     let fd = File::open(passwd_path)?;
     let fd_reader = BufReader::new(fd);
@@ -34,11 +32,9 @@ fn getpwent() -> Result<impl Iterator<Item=UserDataResult>, IOError> {
     Ok(file_lines)
 }
 
-fn setpwent() {
-}
+fn setpwent() {}
 
-fn endpwent() {
-}
+fn endpwent() {}
 
 fn parse_line(line: IOResult<String>) -> UserDataResult {
     let data = line.map_err(|x| PasswdError::IO(x))?;
@@ -83,7 +79,6 @@ pub fn getpwuid(id: u32) -> UserDataResult {
     }
     Err(PasswdError::DoesNotExist)
 }
-
 
 #[cfg(test)]
 mod tests {

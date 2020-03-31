@@ -1,12 +1,12 @@
 use libc;
 
-use std::fs;
-use std::path;
-use std::mem;
-use std::ffi::CString;
 use std::error::Error;
+use std::ffi::CString;
+use std::fs;
 use std::io;
+use std::mem;
 use std::os::unix::fs::MetadataExt;
+use std::path;
 
 static FTW_ACTIONRETVAL: Flag = 1;
 static FTW_CHDIR: Flag = 2;
@@ -16,7 +16,7 @@ static FTW_PHYS: Flag = 16;
 
 const DEFALT_NFTW: NftwResult = Ok(CallbackResult::Continue);
 
-type Func = Fn(&io::Result<fs::Metadata>, &TypeFlag, &Ftw) -> NftwResult;
+type Func = dyn Fn(&io::Result<fs::Metadata>, &TypeFlag, &Ftw) -> NftwResult;
 type NftwResult = Result<CallbackResult, NftwErr>;
 type Flag = u8;
 
@@ -37,13 +37,13 @@ impl From<io::Error> for NftwErr {
 }
 
 enum TypeFlag {
-    File, // FTW_F
-    Directory, // FTW_D
-    UnreadableDirectory, // FTW_DNR
+    File,                  // FTW_F
+    Directory,             // FTW_D
+    UnreadableDirectory,   // FTW_DNR
     PostReadableDirectory, // FTW_DP
-    MetadataFailed, // FTW_NS
-    Symlink, // FTW_SL
-    SymlinkAbsentFile, // FTW_SLN
+    MetadataFailed,        // FTW_NS
+    Symlink,               // FTW_SL
+    SymlinkAbsentFile,     // FTW_SLN
 }
 
 enum CallbackResult {
@@ -52,16 +52,15 @@ enum CallbackResult {
     SkipSubTree,
 }
 
-fn nftw(dirname: &str, action: &Func, nopenfd: i32, flags: Flag) -> NftwResult
-{
-    let mut ftw = Ftw{base: 0, level: 0};
+fn nftw(dirname: &str, action: &Func, nopenfd: i32, flags: Flag) -> NftwResult {
+    let mut ftw = Ftw { base: 0, level: 0 };
     _nftw(path::Path::new(dirname), action, nopenfd, flags, &mut ftw)
 }
 
 fn metadata_ok(
     meta_ok: fs::Metadata,
     from_path: &path::Path,
-    flags: Flag
+    flags: Flag,
 ) -> (io::Result<fs::Metadata>, TypeFlag) {
     let flag = if meta_ok.is_file() {
         TypeFlag::File
@@ -77,10 +76,7 @@ fn metadata_ok(
     (Ok(meta_ok), flag)
 }
 
-fn metadata_err(
-    from_path: &path::Path,
-    flags: Flag,
-) -> (io::Result<fs::Metadata>, TypeFlag) {
+fn metadata_err(from_path: &path::Path, flags: Flag) -> (io::Result<fs::Metadata>, TypeFlag) {
     let meta = from_path.symlink_metadata();
     let flag = match meta {
         Ok(_) if flags & FTW_PHYS != 0 => TypeFlag::Symlink,
@@ -91,7 +87,8 @@ fn metadata_err(
 }
 
 fn resolve_meta_and_type_flag(
-    from_path: &path::Path, flags: Flag,
+    from_path: &path::Path,
+    flags: Flag,
 ) -> (io::Result<fs::Metadata>, TypeFlag) {
     match from_path.metadata() {
         Ok(x) => metadata_ok(x, from_path, flags),
@@ -99,7 +96,13 @@ fn resolve_meta_and_type_flag(
     }
 }
 
-fn read_dir(from_path: &path::Path, action: &Func, nopenfd: i32, flags: Flag, ftw: &mut Ftw) -> NftwResult {
+fn read_dir(
+    from_path: &path::Path,
+    action: &Func,
+    nopenfd: i32,
+    flags: Flag,
+    ftw: &mut Ftw,
+) -> NftwResult {
     for entry in from_path.read_dir()? {
         let path = entry?.path().to_owned();
 
@@ -141,15 +144,21 @@ fn handle_dir_content(
                 read_dir(path_buf.as_path(), action, nopenfd, flags, ftw)?;
             }
             DEFALT_NFTW
-        },
-        TypeFlag::Directory | TypeFlag::PostReadableDirectory => read_dir(
-            current_item_path, action, nopenfd, flags, ftw
-        ),
+        }
+        TypeFlag::Directory | TypeFlag::PostReadableDirectory => {
+            read_dir(current_item_path, action, nopenfd, flags, ftw)
+        }
         _ => DEFALT_NFTW,
     }
 }
 
-fn _nftw(current_item_path: &path::Path, action: &Func, nopenfd: i32, flags: Flag, ftw: &mut Ftw) -> NftwResult {
+fn _nftw(
+    current_item_path: &path::Path,
+    action: &Func,
+    nopenfd: i32,
+    flags: Flag,
+    ftw: &mut Ftw,
+) -> NftwResult {
     let (out_meta, type_flag) = resolve_meta_and_type_flag(current_item_path, flags);
     let callback_result = if FTW_DEPTH & flags == 0 {
         action(&out_meta, &type_flag, ftw).and_then(|x| normalize(x, flags))?
@@ -193,12 +202,14 @@ mod tests {
                 TempPath::String(x) => x,
                 TempPath::Pathbuf(x) => x.to_str().unwrap().to_owned(),
             };
-            fs::create_dir(&path).unwrap_or_else(
-                |e| if e.kind() != io::ErrorKind::AlreadyExists {
+            fs::create_dir(&path).unwrap_or_else(|e| {
+                if e.kind() != io::ErrorKind::AlreadyExists {
                     panic!(e);
                 }
-            );
-            Self{path: path.to_owned()}
+            });
+            Self {
+                path: path.to_owned(),
+            }
         }
 
         fn path_buf(&self) -> path::PathBuf {

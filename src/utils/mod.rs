@@ -28,8 +28,8 @@ fn actual_quicksort<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], is_left_greater
     }
     myslice.swap(i, last);
 
-    actual_quicksort(&mut myslice[0 .. i], is_left_greater_right);
-    actual_quicksort(&mut myslice[i + 1 .. len], is_left_greater_right);
+    actual_quicksort(&mut myslice[0..i], is_left_greater_right);
+    actual_quicksort(&mut myslice[i + 1..len], is_left_greater_right);
 }
 
 pub fn quicksort<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], is_left_greater_right: F) {
@@ -42,16 +42,16 @@ mod tests {
 
     #[test]
     fn odd_elements() {
-        let mut v = vec![3,2,1];
+        let mut v = vec![3, 2, 1];
         quicksort(&mut v, |x, y| x > y);
-        assert_eq!(v, vec![1,2,3]);
+        assert_eq!(v, vec![1, 2, 3]);
     }
 
     #[test]
     fn even_elements() {
-        let mut v = vec![4,3,1,1];
+        let mut v = vec![4, 3, 1, 1];
         quicksort(&mut v, |x, y| x > y);
-        assert_eq!(v, vec![1,1,3,4]);
+        assert_eq!(v, vec![1, 1, 3, 4]);
     }
 
     #[test]
@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn two_element() {
-        let mut v = vec![4,2];
+        let mut v = vec![4, 2];
         quicksort(&mut v, |x, y| x > y);
         assert_eq!(v, vec![2, 4]);
     }
@@ -72,7 +72,7 @@ mod tests {
     fn equal_elements() {
         let mut v = vec![4, 4, 2, 1, 0, 8, 7, 7];
         quicksort(&mut v, |x, y| x > y);
-        assert_eq!(v, vec![0, 1, 2 ,4, 4, 7, 7, 8]);
+        assert_eq!(v, vec![0, 1, 2, 4, 4, 7, 7, 8]);
     }
 
     #[test]

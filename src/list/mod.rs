@@ -3,10 +3,10 @@
 mod item;
 mod iter;
 
-use std::mem::replace;
 use self::item::Link;
-use self::iter::Iter;
 use self::iter::Cursor;
+use self::iter::Iter;
+use std::mem::replace;
 
 pub struct List<T> {
     pub head: Link<T>,
@@ -15,15 +15,18 @@ pub struct List<T> {
 
 impl<T> List<T> {
     pub fn cursor(&mut self) -> Cursor<T> {
-        return Cursor::new(&self.head)
+        return Cursor::new(&self.head);
     }
 
     pub fn iter(&self) -> Iter<T> {
-        return Iter::new(&self.head)
+        return Iter::new(&self.head);
     }
 
     pub fn new() -> Self {
-        List{head: Link::null(), tail: Link::null()}
+        List {
+            head: Link::null(),
+            tail: Link::null(),
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -67,7 +70,7 @@ impl<T> List<T> {
             old_tail.remove()
         }
     }
-    
+
     fn pop_front(&mut self) -> Option<T> {
         if self.is_empty() {
             println!("is empty");
@@ -86,7 +89,7 @@ impl<T> List<T> {
     pub fn back(&self) -> Option<&T> {
         self.tail.get_value()
     }
-    
+
     pub fn front(&self) -> Option<&T> {
         self.head.get_value()
     }

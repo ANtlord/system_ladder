@@ -11,33 +11,35 @@ impl<T> Node<T> {
         Self {
             value: value,
             //parent: parent,
-            children: vec!(),
+            children: vec![],
         }
     }
 }
 
-
 pub fn make_tree<T, F>(parent: &mut Node<T>, heap: &mut Vec<T>, is_child: F)
 where
-    F: Fn(&T, &T) -> bool
+    F: Fn(&T, &T) -> bool,
 {
     _make_tree(parent, heap, &is_child)
 }
 
 fn _make_tree<T, F>(parent: &mut Node<T>, heap: &mut Vec<T>, is_child: &F)
 where
-    F: Fn(&T, &T) -> bool
+    F: Fn(&T, &T) -> bool,
 {
     let since = move_to_end_by(&parent.value, heap, is_child);
 
     if let Some(since) = since {
         let len = heap.len();
-        for _ in since .. len {
+        for _ in since..len {
             if let Some(x) = heap.pop() {
                 parent.children.push(Node::new(x));
             }
         }
-        parent.children.iter_mut().for_each(|mut x| _make_tree(&mut x, heap, is_child));
+        parent
+            .children
+            .iter_mut()
+            .for_each(|mut x| _make_tree(&mut x, heap, is_child));
     }
 }
 
@@ -55,15 +57,47 @@ mod tests {
     #[test]
     fn sort_in_the_end() {
         let mut processes = vec![
-            Process{name: "init".to_owned(), pid: 1, ppid: 0},
-            Process{name: "kde".to_owned(), pid: 3, ppid: 1},
-            Process{name: "bash".to_owned(), pid: 333, ppid: 1},
-            Process{name: "systemd".to_owned(), pid: 2, ppid: 0},
-            Process{name: "vim".to_owned(), pid: 125, ppid: 3},
-            Process{name: "ssh".to_owned(), pid: 412, ppid: 2},
-            Process{name: "kthread".to_owned(), pid: 33, ppid: 0},
-        ];                                                                    
-        let mut fake_process = Node::new(Process{name: "".to_owned(), pid: 0, ppid: 0});
+            Process {
+                name: "init".to_owned(),
+                pid: 1,
+                ppid: 0,
+            },
+            Process {
+                name: "kde".to_owned(),
+                pid: 3,
+                ppid: 1,
+            },
+            Process {
+                name: "bash".to_owned(),
+                pid: 333,
+                ppid: 1,
+            },
+            Process {
+                name: "systemd".to_owned(),
+                pid: 2,
+                ppid: 0,
+            },
+            Process {
+                name: "vim".to_owned(),
+                pid: 125,
+                ppid: 3,
+            },
+            Process {
+                name: "ssh".to_owned(),
+                pid: 412,
+                ppid: 2,
+            },
+            Process {
+                name: "kthread".to_owned(),
+                pid: 33,
+                ppid: 0,
+            },
+        ];
+        let mut fake_process = Node::new(Process {
+            name: "".to_owned(),
+            pid: 0,
+            ppid: 0,
+        });
         let since = move_to_end_by(&fake_process.value, &mut processes, |x, y| x.pid == y.ppid);
         let len = processes.len();
         assert_eq!(since, Some(len - 3), "{:#?}", processes);
@@ -76,19 +110,50 @@ mod tests {
     #[test]
     fn one() {
         let mut processes = vec![
-            Process{name: "init".to_owned(), pid: 1, ppid: 0},
-            Process{name: "kde".to_owned(), pid: 3, ppid: 1},
-            Process{name: "bash".to_owned(), pid: 333, ppid: 1},
-
-            Process{name: "vim".to_owned(), pid: 125, ppid: 3},
-            Process{name: "systemd".to_owned(), pid: 2, ppid: 0},
-            Process{name: "ssh".to_owned(), pid: 412, ppid: 2},
+            Process {
+                name: "init".to_owned(),
+                pid: 1,
+                ppid: 0,
+            },
+            Process {
+                name: "kde".to_owned(),
+                pid: 3,
+                ppid: 1,
+            },
+            Process {
+                name: "bash".to_owned(),
+                pid: 333,
+                ppid: 1,
+            },
+            Process {
+                name: "vim".to_owned(),
+                pid: 125,
+                ppid: 3,
+            },
+            Process {
+                name: "systemd".to_owned(),
+                pid: 2,
+                ppid: 0,
+            },
+            Process {
+                name: "ssh".to_owned(),
+                pid: 412,
+                ppid: 2,
+            },
         ];
 
-        let mut fake_process = Node::new(Process{name: "".to_owned(), pid: 0, ppid: 0});
+        let mut fake_process = Node::new(Process {
+            name: "".to_owned(),
+            pid: 0,
+            ppid: 0,
+        });
         make_tree(&mut fake_process, &mut processes, |x, y| x.pid == y.ppid);
 
-        assert_eq!(fake_process.children.len(), 2, "Wrong number of children of the root process");
+        assert_eq!(
+            fake_process.children.len(),
+            2,
+            "Wrong number of children of the root process"
+        );
 
         let init = &fake_process.children[1];
         let systemd = &fake_process.children[0];

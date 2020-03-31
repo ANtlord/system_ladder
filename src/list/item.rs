@@ -1,17 +1,15 @@
 use std::ptr::null_mut;
 // use std::ptr::NonNull;
-use std::mem::replace;
 use std::cell::Cell;
 use std::cmp::PartialEq;
+use std::mem::replace;
 
 #[derive(Debug)]
 pub struct Link<T>(Cell<*mut Item<T>>);
 
 impl<T> Link<T> {
     pub fn new(value: T) -> Self {
-        Link(Cell::new(
-            Box::into_raw(Box::new(Item::new(value)))
-        ))
+        Link(Cell::new(Box::into_raw(Box::new(Item::new(value)))))
     }
 
     pub fn null() -> Self {
@@ -26,7 +24,7 @@ impl<T> Link<T> {
         if self.get_ptr().is_null() {
             None
         } else {
-            unsafe{Some(&mut *self.get_ptr())}
+            unsafe { Some(&mut *self.get_ptr()) }
         }
     }
 
@@ -34,7 +32,7 @@ impl<T> Link<T> {
         if self.get_ptr().is_null() {
             None
         } else {
-            unsafe{Some(&mut *self.get_ptr())}
+            unsafe { Some(&mut *self.get_ptr()) }
         }
     }
 
@@ -46,7 +44,7 @@ impl<T> Link<T> {
         if self.get_ptr().is_null() {
             None
         } else {
-            unsafe{Some(&(*self.get_ptr()).get())}
+            unsafe { Some(&(*self.get_ptr()).get()) }
         }
     }
 
@@ -59,8 +57,8 @@ impl<T> Link<T> {
             Some(x) => {
                 x.add_next(value);
                 Ok(Self::from_link(&x.next))
-            },
-            None => Err("Pointer is null")
+            }
+            None => Err("Pointer is null"),
         };
         if res.is_ok() {
             self.get_mut().unwrap().next.get_mut().unwrap().prev = Link::from_link(&self);
@@ -73,8 +71,8 @@ impl<T> Link<T> {
             Some(x) => {
                 x.add_prev(value);
                 Ok(Self::from_link(&x.prev))
-            },
-            None => Err("Pointer is null")
+            }
+            None => Err("Pointer is null"),
         };
         if res.is_ok() {
             self.get_mut().unwrap().prev.get_mut().unwrap().next = Link::from_link(&self);
@@ -86,7 +84,7 @@ impl<T> Link<T> {
         if self.get_ptr().is_null() {
             None
         } else {
-            Some(unsafe{
+            Some(unsafe {
                 let ptr = Box::from_raw(self.get_ptr());
                 (*ptr).remove()
             })
@@ -121,7 +119,11 @@ pub struct Item<T> {
 
 impl<T> Item<T> {
     fn new(value: T) -> Self {
-        Item{value: value, prev: Link::null(), next: Link::null()}
+        Item {
+            value: value,
+            prev: Link::null(),
+            next: Link::null(),
+        }
     }
 
     fn add_next(&mut self, value: T) {
@@ -166,14 +168,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn link_eq(){
+    fn link_eq() {
         let l1 = Link::new(1);
         let l2 = Link::from_link(&l1);
         assert!(l1 == l2);
     }
 
     #[test]
-    fn link_null_eq(){
+    fn link_null_eq() {
         let l1: Link<u8> = Link::null();
         let l2: Link<u8> = Link::null();
         assert!(l1 == l2);

@@ -22,7 +22,6 @@ where
             let mut count = heap_len;
 
             for i in 0..count {
-
                 if !are_equal(&sample, &heap[i]) {
                     continue;
                 }
@@ -32,7 +31,6 @@ where
                 }
 
                 heap.swap(i, count);
-
             }
 
             Some(count)
@@ -63,6 +61,6 @@ mod tests {
         let mut numbers = vec![0, 0, 0, 0, 3, 2, 0];
         let since = move_to_end_by(&0, &mut numbers, |x, y| x == y);
         assert_eq!(since.unwrap(), 2);
-        assert_eq!(numbers[since.unwrap() .. ], [0, 0, 0, 0, 0]);
+        assert_eq!(numbers[since.unwrap()..], [0, 0, 0, 0, 0]);
     }
 }

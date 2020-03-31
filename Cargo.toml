@@ -5,3 +5,6 @@ authors = ["antlord <antlord92@gmail.com>"]
 
 [dependencies]
 libc = "0.2"
+envy = "0.4"
+inotify = "0.8.2"
+inotify-sys = "0.1.3"

@@ -7,7 +7,10 @@ pub struct Iter<'a, T: 'a> {
 
 impl<'a, T: 'a> Iter<'a, T> {
     pub fn new(link: &'a Link<T>) -> Self {
-        Iter{current: link, is_next_called: false}
+        Iter {
+            current: link,
+            is_next_called: false,
+        }
     }
 }
 
@@ -32,7 +35,7 @@ pub struct Cursor<'a, T: 'a> {
 
 impl<'a, T: 'a> Cursor<'a, T> {
     pub fn new(link: &'a Link<T>) -> Self {
-        Cursor{current_link: link}
+        Cursor { current_link: link }
     }
 
     pub fn move_next(&mut self) -> Option<&mut T> {
@@ -45,6 +48,6 @@ impl<'a, T: 'a> Cursor<'a, T> {
         if ptr.is_null() {
             return None;
         }
-        Some(unsafe{ (*ptr).get_mut() })
+        Some(unsafe { (*ptr).get_mut() })
     }
 }
