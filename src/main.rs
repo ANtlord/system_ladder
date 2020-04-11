@@ -207,5 +207,10 @@ fn tcp_server() -> Result<(), Box<dyn Error>> {
 fn main() {
     // tcp_server().unwrap();
     // unsafe {signal::signal_handling()};
-    unsafe {signal::block_signals()};
+    // unsafe {signal::block_signals()};
+    // unsafe {signal::alternative_stack().unwrap()};
+    // unsafe {signal::wait_signal().unwrap()};
+    // unsafe { signal::listen_dead_child() };
+    // unsafe {signal::check_alarm().unwrap()};
+    unsafe { signal::check_grandparent().unwrap() };
 }
