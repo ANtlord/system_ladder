@@ -2,6 +2,7 @@
 extern crate libc;
 extern crate inotify;
 extern crate inotify_sys;
+extern crate core;
 // static input: str = "EASY****";
 
 use std::fmt::{Debug, Formatter};
@@ -13,6 +14,7 @@ mod tree;
 mod user;
 mod utils;
 mod signal;
+mod timer;
 
 use std::str;
 use std::ffi;

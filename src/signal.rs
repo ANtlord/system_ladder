@@ -268,13 +268,10 @@ unsafe fn child_signal_handler(sig: i32) {
     println!("I caught a signanl from a child: {}", sig);
 }
 
-
 pub unsafe fn listen_dead_child() {
     unsafe {
         let sighandler = libc::signal(libc::SIGCHLD, advanced_handler as libc::sighandler_t);
         assert_ne!(sighandler, libc::SIG_ERR, "fail to changle SIGCHLD disposition");
-        // let mut stdout: fs::File = fs::File::from_raw_fd(1);
-        // stdout.flush().unwrap();
         match libc::fork() {
             0 => {
                 println!("I'm a child and I'm done;");
@@ -334,37 +331,4 @@ pub unsafe fn check_grandparent() -> Res<()> {
         grandparent_id,
     );
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_alarm() {
-        unsafe fn alarm_handler(sig: i32, info: &sigutils::SigInfo, _: *const c_void) {
-            println!("Time's up! sig = {}. Timer id = {}", sig, info.fields.timer.si_timerid);
-        }
-
-        unsafe {
-            let mask = {
-                let mut mask_uninit = mem::MaybeUninit::uninit();
-                libc::sigemptyset(mask_uninit.as_mut_ptr());
-                mask_uninit.assume_init()
-            };
-            let mut old_disposition = mem::MaybeUninit::uninit();
-            let new_disposition = libc::sigaction {
-                sa_flags: libc::SA_RESTART | libc::SA_SIGINFO,
-                sa_mask: mask,
-                sa_sigaction: alarm_handler as libc::sighandler_t,
-                sa_restorer: None,
-            };
-
-            libc::sigaction(libc::SIGALRM, &new_disposition, old_disposition.as_mut_ptr());
-            old_disposition.assume_init();
-
-            libc::alarm(1);
-            libc::pause();
-        }
-    }
 }
