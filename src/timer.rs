@@ -1,5 +1,6 @@
 use core::mem;
 use std::ffi::c_void;
+use crate::utils::signal as sigutils;
 
 pub fn check_alarm() {
     unsafe fn alarm_handler(sig: i32, info: &sigutils::SigInfo, _: *const c_void) {

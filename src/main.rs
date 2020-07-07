@@ -1,5 +1,5 @@
 #![allow(unused)]
-extern crate libc;
+pub use libc;
 extern crate inotify;
 extern crate inotify_sys;
 extern crate core;
@@ -15,7 +15,11 @@ mod user;
 mod utils;
 mod signal;
 mod timer;
+mod container;
 
+use std::any::TypeId;
+use std::mem::transmute;
+use std::marker::PhantomData;
 use std::str;
 use std::ffi;
 use std::cell::Cell;
@@ -35,18 +39,25 @@ use std::io;
 use inotify_sys::read;
 use std::ops::Deref;
 use std::fmt;
+use std::fs as stdfs;
+use std::process::Command;
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::Receiver;
 
-trait Wrap {
-    fn wrap(self, v: &str) -> Self;
+type BoxErr = Box<dyn Error>;
+
+trait Wrap<T> {
+    fn wrap(self, v: &'static str) -> Result<T, BoxErr>;
 }
 
-impl<T> Wrap for Result<T, Box<dyn Error>> {
-    fn wrap(self, value: &str) -> Self {
-        let value = value.to_owned();
-        self.map_err(|x| format!("{}: {}", &value, x).into())
+impl<T, E> Wrap<T> for Result<T, E>
+    where E: Into<BoxErr>
+{
+    fn wrap(self, value: &'static str) -> Result<T, BoxErr> {
+        self.map_err(|x| format!("{}: {}", &value, x.into()).into())
     }
 }
-
 
 trait Exit<T> {
     fn or_exit(self, msg: &str) -> T;
@@ -149,7 +160,10 @@ fn handle_conn(stream: &mut net::TcpStream) -> Result<(), ReadErr> {
     Ok(())
 }
 
-fn accept(listener: &net::TcpListener, streams: &mut Vec<Option<net::TcpStream>>) -> Result<(), Box<dyn Error>> {
+fn accept(
+    listener: &net::TcpListener,
+    streams: &mut Vec<Option<net::TcpStream>>,
+) -> Result<(), Box<dyn Error>> {
     match listener.accept() {
         Ok((x, _)) => {
             x.set_nonblocking(true)?;
@@ -207,6 +221,14 @@ fn tcp_server() -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
+    stdfs::File::open("qwe").wrap("qweasd").wrap("asd").unwrap();
+    // println!("before sleep");
+    // Command::new("ls").spawn().unwrap();
+    // println!("after sleep");
+    // for i in 0 .. 100 {
+    //     thread::spawn(|| thread::sleep(time::Duration::from_secs(20)));
+    // }
+
     // tcp_server().unwrap();
     // unsafe {signal::signal_handling()};
     // unsafe {signal::block_signals()};
@@ -214,5 +236,5 @@ fn main() {
     // unsafe {signal::wait_signal().unwrap()};
     // unsafe { signal::listen_dead_child() };
     // unsafe {signal::check_alarm().unwrap()};
-    unsafe { signal::check_grandparent().unwrap() };
+    // unsafe { signal::check_grandparent().unwrap() };
 }

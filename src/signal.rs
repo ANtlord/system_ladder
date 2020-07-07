@@ -1,12 +1,10 @@
 use std::{thread, io};
-use std::os::unix::io as unixio;
-use std::os::unix::io::FromRawFd;
 use std::os::unix::process as unixprocess;
+use std::os::unix::io::FromRawFd;
 use std::fs;
 use std::ffi;
 use std::time;
 use std::io::{Read, BufRead};
-use std::io::Write;
 use std::process;
 use std::mem;
 use std::os::raw::{c_char, c_int, c_void, c_long, c_short, c_uint};
@@ -16,24 +14,43 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::error::Error;
 use std::cmp::max;
-use utils::signal as sigutils;
-use utils::string;
+use crate::utils::signal as sigutils;
+use crate::utils::string;
 
-static mut PIPE_FDS: [unixio::RawFd; 2] = [-1, -1];
+mod handler {
+    use super::FromRawFd;
+    use super::fs;
+    use super::string;
+    use super::sigutils;
+    use std::os::unix::io as unixio;
+    use std::io::Write;
+
+    pub static mut PIPE_FDS: [unixio::RawFd; 2] = [-1, -1];
+
+    // the handler can be called only once because tx_pipe dies in the end of the function.
+    pub unsafe fn piped(_: u32) {
+        println!("signal handler hello");
+        let mut tx_pipe = fs::File::from_raw_fd(PIPE_FDS[1]);
+        if let Err(x) = tx_pipe.write("1".as_bytes()) {
+            println!("fail to send data to pipe {}", x);
+        }
+    }
+
+    pub unsafe fn alternative_stack(sig: u32) {
+        println!(
+            "alternate_stack_handler called, {}",
+            string::from_cstr(sigutils::strsignal(sig as i32)).unwrap(),
+        );
+        let a = 1u32;
+        println!("stack address = {:p}", &a);
+    }
+}
 
 unsafe fn advanced_handler(sig: c_int, si: *const libc::siginfo_t, ctx: *const c_void) {
     if si.is_null() {
         println!("si is null");
     }
     println!("advanced handler called: sig = {}, si_code = {}", sig, (*si).si_code);
-}
-
-unsafe fn global_handler(_: u32) {
-    println!("signal handler hello");
-    let mut tx_pipe = fs::File::from_raw_fd(PIPE_FDS[1]);
-    if let Err(x) = tx_pipe.write("1".as_bytes()) {
-        println!("fail to send data to pipe {}", x);
-    }
 }
 
 unsafe fn read_pipe(rx_pipe: i32) {
@@ -58,12 +75,12 @@ unsafe fn read_pipe(rx_pipe: i32) {
 
 pub unsafe fn signal_handling() {
     let errloc = libc::__errno_location();
-    if libc::pipe(PIPE_FDS.as_mut_ptr()) != 0 && *errloc != 0 {
+    if libc::pipe(handler::PIPE_FDS.as_mut_ptr()) != 0 && *errloc != 0 {
         println!("fail to handle signal, code: {}. Text: {}", *errloc, err_string().unwrap());
         return;
     }
 
-    let rx_pipe = PIPE_FDS[0];
+    let rx_pipe = handler::PIPE_FDS[0];
     let pipe_flags = libc::fcntl(rx_pipe, libc::F_GETFL);
     if pipe_flags == -1 {
         println!("fail to get pipe flags, code: {}. Text: {}", *errloc, err_string().unwrap());
@@ -77,7 +94,7 @@ pub unsafe fn signal_handling() {
 
     thread::spawn(move || read_pipe(rx_pipe));
 
-    libc::signal(libc::SIGUSR1, global_handler as libc::sighandler_t);
+    libc::signal(libc::SIGUSR1, handler::piped as libc::sighandler_t);
     if *errloc != 0 {
         println!("fail to handle signal, code: {}. Text: {}", *errloc, err_string().unwrap());
         return;
@@ -87,10 +104,6 @@ pub unsafe fn signal_handling() {
         libc::raise(libc::SIGUSR1);
         thread::sleep(time::Duration::from_secs(1));
     }
-}
-
-unsafe fn sigaction_handler(sig: u32) {
-    println!("sigaction_handler called, {}", ffi::CStr::from_ptr(sigutils::strsignal(sig as i32)).to_str().unwrap());
 }
 
 pub fn err_string() -> Result<String, str::Utf8Error> {
@@ -196,12 +209,6 @@ pub unsafe fn block_signals() {
     libc::pause();
 }
 
-unsafe extern fn alternate_stack_handler(sig: u32) {
-    println!("sigaction_handler called, {}", string::from_cstr(sigutils::strsignal(sig as i32)).unwrap());
-    let a = 1u32;
-    println!("stack address = {:p}", &a);
-}
-
 pub unsafe fn alternative_stack() -> Res<()> {
     let errloc = libc::__errno_location();
     let stack = libc::stack_t {
@@ -223,7 +230,7 @@ pub unsafe fn alternative_stack() -> Res<()> {
     let new_disposition = libc::sigaction {
         sa_flags: libc::SA_ONSTACK,
         sa_mask: mask,
-        sa_sigaction: alternate_stack_handler as libc::sighandler_t,
+        sa_sigaction: handler::alternative_stack as libc::sighandler_t,
         sa_restorer: None,
     };
 
@@ -231,7 +238,7 @@ pub unsafe fn alternative_stack() -> Res<()> {
     old_disposition.assume_init();
     let a = 1u32;
     println!("stack address = {:p}", &a);
-    libc::pause();
+    libc::raise(libc::SIGUSR2);
     Ok(())
 }
 

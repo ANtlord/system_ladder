@@ -1,12 +1,15 @@
 /*This is the sample program to notify us for the file creation and file deletion takes place in “/tmp” directory*/
 #include <stdio.h>
+#include <sys/mman.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <linux/inotify.h>
+#include <linux/futex.h>
 #include <signal.h>
 #include <unistd.h>
 
+#if 0
 #define EVENT_SIZE  ( sizeof (struct inotify_event) )
 #define EVENT_BUF_LEN     ( 1024 * ( EVENT_SIZE + 16 ) )
 
@@ -84,48 +87,24 @@ void watch_files() {
 	/*closing the INOTIFY instance*/
 	close( fd );
 }
+#endif
 
-void grand_siblings() {
-	pid_t parent_id = getpid();
-	pid_t childpid;
+void* create_shared_memory(size_t size) {
+	int protection = PROT_READ | PROT_WRITE;
+	int visibility = MAP_SHARED | MAP_ANONYMOUS;
+	return mmap(NULL, size, protection, visibility, -1, 0);
+}
 
-	switch (childpid = fork()) {
-		case 0:
-			break;
-		case -1:
-			printf("fail to born a child");
-			break;
-		default:
-			sleep(3);
-			printf("Grandparent with id = %d has got a child with id = %d\n", parent_id, childpid);
-			sleep(3);
-			return;
+int main(int argc, char** argv) {
+	void* shptr = create_shared_memory(4);
+	int* shint = (int*) shptr;
+	*shint = 0;
+
+	int res = futex(shint, FUTEX_WAIT, 0, NULL, NULL, 0);
+	if (res == -1) {
+		perror("futex fail");
+		return 1;
 	}
 
-	printf("I'm a child, my parend id = %d\n", getppid());
-	_exit(EXIT_SUCCESS);
-
-	// switch (childpid = fork()) {
-	// 	case 0:
-	// 		break;
-	// 	case -1:
-	// 		printf("fail to born a child\n");
-	// 		break;
-	// 	default:
-	// 		printf("Parent with id = %d has got a child with id = %d. It's gonna be a zombie\n", getpid(), childpid);
-	// 		return;
-	// }
-
-	// printf("I'm a child, I'm waiting for my parent death\n");
-	// sleep(1);
-	// pid_t parent_id = getppid();
-	// printf("I'm a child, my parent id = %d. My grandparent id %d\n", parent_id, grandparent_id);
+	return 0;
 }
-
-int main()
-{
-	grand_siblings();
-	// listen_signal();
-	// watch_files();
-}
-

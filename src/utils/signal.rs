@@ -1,6 +1,6 @@
 use std::mem;
 use std::os::raw::{c_char, c_int, c_void, c_long, c_short, c_uint};
-use utils::string;
+use crate::utils::string;
 
 const SI_MAX_SIZE: usize = 128;
 const WORDSIZE: usize = 64;
