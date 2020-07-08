@@ -2,6 +2,7 @@
 name = "system_ladder"
 version = "0.1.0"
 authors = ["antlord <antlord92@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 libc = "0.2"

@@ -1,4 +1,4 @@
-use utils::vector::move_to_end_by;
+use crate::utils::vector::move_to_end_by;
 
 pub struct Node<T> {
     pub value: T,
@@ -9,7 +9,7 @@ pub struct Node<T> {
 impl<T> Node<T> {
     pub fn new(value: T) -> Self {
         Self {
-            value: value,
+            value,
             //parent: parent,
             children: vec!(),
         }
