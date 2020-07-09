@@ -1,7 +1,8 @@
 use std::cmp::Ord;
+use std::collections::BTreeMap;
+use std::fmt;
 use std::mem;
 use std::ptr::NonNull;
-use std::fmt;
 
 pub type NodePtr<T> = Option<NonNull<Node<T>>>;
 
@@ -19,23 +20,23 @@ pub enum Color {
 }
 
 impl fmt::Debug for Color {
-     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-         match self {
-             Color::Red => f.write_str("(r)"),
-             Color::Black => f.write_str("(b)"),
-         }
-     }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Color::Red => f.write_str("(r)"),
+            Color::Black => f.write_str("(b)"),
+        }
+    }
 }
 
 impl Color {
-    fn is_red(&self) -> bool {
+    pub fn is_red(&self) -> bool {
         match self {
             Color::Black => false,
             Color::Red => true,
         }
     }
 
-    fn is_black(&self) -> bool {
+    pub fn is_black(&self) -> bool {
         match self {
             Color::Black => true,
             Color::Red => false,
@@ -48,7 +49,7 @@ pub struct Node<T> {
     pub left: NodePtr<T>,
     pub right: NodePtr<T>,
     pub color: Color,
-    pub value: T,
+    pub value: NonNull<T>,
 }
 
 fn to_heap<T>(val: T) -> NonNull<T> {
@@ -56,7 +57,7 @@ fn to_heap<T>(val: T) -> NonNull<T> {
 }
 
 impl<T: Ord> Node<T> {
-    pub fn head(value: T) -> NonNull<Self> {
+    pub fn head(value: NonNull<T>) -> NonNull<Self> {
         to_heap(Self {
             parent: zero_node_ptr(),
             left: zero_node_ptr(),
@@ -66,7 +67,7 @@ impl<T: Ord> Node<T> {
         })
     }
 
-    fn black(value: T, parent: NonNull<Self>) -> NonNull<Self> {
+    fn black(value: NonNull<T>, parent: NonNull<Self>) -> NonNull<Self> {
         to_heap(Self {
             left: zero_node_ptr(),
             right: zero_node_ptr(),
@@ -76,7 +77,7 @@ impl<T: Ord> Node<T> {
         })
     }
 
-    fn red(value: T, parent: NonNull<Self>) -> NonNull<Self> {
+    fn red(value: NonNull<T>, parent: NonNull<Self>) -> NonNull<Self> {
         to_heap(Self {
             left: zero_node_ptr(),
             right: zero_node_ptr(),
@@ -109,15 +110,15 @@ impl<T: Ord> Node<T> {
         self.parent?.as_ref().sibling()
     }
 
-    pub unsafe fn add(&mut self, val: T) -> NonNull<Self> {
+    pub unsafe fn add(&mut self, val: NonNull<T>) -> NonNull<Self> {
         let mut parent = NonNull::new_unchecked(self);
         let mut value = Some(val);
         while value.is_some() {
             let val = value.take().unwrap();
             let mut parent_clone = parent.clone();
-            let mut node = if val < parent.as_ref().value {
+            let mut node = if val.as_ref() < parent.as_ref().value.as_ref() {
                 Some(&mut parent_clone.as_mut().left)
-            } else if val > parent.as_ref().value {
+            } else if val.as_ref() > parent.as_ref().value.as_ref() {
                 Some(&mut parent_clone.as_mut().right)
             } else {
                 None
@@ -134,8 +135,8 @@ impl<T: Ord> Node<T> {
     unsafe fn try_set_leg(
         parent: &mut NonNull<Self>,
         node: &mut NodePtr<T>,
-        value: T,
-    ) -> Option<T> {
+        value: NonNull<T>,
+    ) -> Option<NonNull<T>> {
         match node {
             Some(ref mut x) => {
                 *parent = NonNull::new_unchecked(x.as_mut());
@@ -148,11 +149,6 @@ impl<T: Ord> Node<T> {
                 None
             }
         }
-    }
-
-    fn set_legs(&mut self, left: NodePtr<T>, right: NodePtr<T>) {
-        self.left = left;
-        self.right = right;
     }
 
     //   ancestor
@@ -238,16 +234,28 @@ impl<T: Ord> Node<T> {
     }
 }
 
-enum Rotation {
-    Left,
-    Right,
-}
-
-// new is root
-// new's parent is black
-// new's parent is red and new's uncle is red => make them black, make grandparent red
-// new's parent is red and new's uncle is black
-// returns root
+// new is root => make it black
+// new's parent is black => nothing to do
+// new's parent is red and new's uncle is red => make them black, make grandparent red; repeat for
+// the grandparent.
+// new's parent is red and new's uncle is black or there is no uncle =>
+//    g
+//   /
+//  p
+//   \
+//    n
+//  - if new node is the right leg of its parent and the parent is the left leg of grandparent =>
+//      rotate parent to left to get straight branch: g-n-p. Next actions are for the parent node.
+//  g
+//   \
+//    p
+//   /
+//  n
+//  - else if new node is the left leg of its parent and the parent is the right leg of grandparent =>
+//      rotate parent to right to get straight branch: g-n-p. Next actions are for the parent node.
+//  - if the new node is left leg of its parent then rotate the grandparent to right.
+//  - else if the new node is right leg of its parent then rotate the grandparent to left.
+//  - make the parent black and the grandparent red
 pub unsafe fn repair<T: Ord>(new: NonNull<Node<T>>) {
     let mut node = Some(new);
     while node.is_some() {
@@ -308,7 +316,6 @@ unsafe fn repair_step<T: Ord>(mut new: NonNull<Node<T>>) -> NodePtr<T> {
     return None;
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,26 +325,26 @@ mod tests {
     type Branch = (Nodeu8, Nodeu8, Nodeu8);
 
     unsafe fn make_long_branch(a: u8, g: u8, p: u8, l: u8) -> LongBranch {
-        let mut ancestor = Node::head(a);
-        let mut grandparent = ancestor.as_mut().add(g);
-        let mut parent = grandparent.as_mut().add(p);
-        let mut leaf = parent.as_mut().add(l);
+        let mut ancestor = Node::head(to_heap(a));
+        let mut grandparent = ancestor.as_mut().add(to_heap(g));
+        let mut parent = grandparent.as_mut().add(to_heap(p));
+        let mut leaf = parent.as_mut().add(to_heap(l));
         (ancestor, grandparent, parent, leaf)
     }
 
     unsafe fn make_branch(h: u8, c: u8, g: u8) -> Branch {
-        let mut head = Node::head(h);
-        let mut child = head.as_mut().add(c);
-        let mut grandchild = child.as_mut().add(g);
+        let mut head = Node::head(to_heap(h));
+        let mut child = head.as_mut().add(to_heap(c));
+        let mut grandchild = child.as_mut().add(to_heap(g));
         (head, child, grandchild)
     }
 
     #[test]
     fn test_cmp() {
         unsafe {
-            let mut head = Node::head(2);
-            let right = Node::head(1);
-            let left_child = head.as_mut().add(1);
+            let mut head = Node::head(to_heap(2));
+            let right = Node::head(to_heap(1));
+            let left_child = head.as_mut().add(to_heap(1));
             assert_eq!(head, head);
             assert_ne!(head, right);
             assert_eq!(left_child.as_ref().parent.unwrap(), head);
@@ -353,9 +360,9 @@ mod tests {
     #[test]
     fn sibling() {
         unsafe {
-            let mut head = Node::head(2);
-            let left = head.as_mut().add(1);
-            let right = head.as_mut().add(3);
+            let mut head = Node::head(to_heap(2));
+            let left = head.as_mut().add(to_heap(1));
+            let right = head.as_mut().add(to_heap(3));
             assert_eq!(head.as_ref().left.unwrap(), left);
             assert_eq!(head.as_ref().right.unwrap(), right);
             assert_eq!(left.as_ref().sibling().unwrap(), right);
@@ -375,7 +382,7 @@ mod tests {
     fn uncle() {
         unsafe {
             let (mut head, child1, grandchild) = make_branch(2, 3, 4);
-            let mut child2 = head.as_mut().add(1);
+            let mut child2 = head.as_mut().add(to_heap(1));
             assert_eq!(grandchild.as_ref().uncle().unwrap(), child2);
         }
     }
@@ -384,7 +391,7 @@ mod tests {
     fn add() {
         unsafe {
             let (mut head, child1, grandchild) = make_branch(2, 3, 4);
-            let mut child2 = head.as_mut().add(1);
+            let mut child2 = head.as_mut().add(to_heap(1));
             assert_eq!(child1.as_ref().parent.unwrap(), head);
             assert_eq!(child2.as_ref().parent.unwrap(), head);
             assert_eq!(grandchild.as_ref().parent.unwrap(), child1);
@@ -493,7 +500,7 @@ mod tests {
         //           u(b)
         unsafe {
             let (mut head, parent, node) = make_branch(8, 7, 6);
-            let mut uncle = head.as_mut().add(9);
+            let mut uncle = head.as_mut().add(to_heap(9));
             uncle.as_mut().color = Color::Black;
             let res = repair_step(node);
             check_node(node, Color::Red, None, None, parent, "node");
@@ -524,7 +531,7 @@ mod tests {
         //          u(b)
         unsafe {
             let (mut head, parent, node) = make_branch(8, 6, 7);
-            let mut uncle = head.as_mut().add(9);
+            let mut uncle = head.as_mut().add(to_heap(9));
             uncle.as_mut().color = Color::Black;
             let res = repair_step(node);
             check_node(node, Color::Black, parent, head, None, "node");
@@ -546,16 +553,16 @@ mod tests {
         //    /   \
         //   a(b)  n(r)
         //  /
-        // u(b)       
+        // u(b)
         // -----------
         //     p(b)
         //    /   \
         //   a(r)  n(r)
         //  /
-        // u(b)       
+        // u(b)
         unsafe {
             let (mut head, parent, node) = make_branch(5, 7, 8);
-            let mut uncle = head.as_mut().add(4);
+            let mut uncle = head.as_mut().add(to_heap(4));
             uncle.as_mut().color = Color::Black;
             let res = repair_step(node);
             check_node(node, Color::Red, None, None, parent, "node");
@@ -586,7 +593,7 @@ mod tests {
         //   u(b)
         unsafe {
             let (mut head, parent, node) = make_branch(5, 7, 6);
-            let mut uncle = head.as_mut().add(4);
+            let mut uncle = head.as_mut().add(to_heap(4));
             uncle.as_mut().color = Color::Black;
             let res = repair_step(node);
             check_node(node, Color::Black, head, parent, None, "node");
@@ -611,7 +618,7 @@ mod tests {
         //     n(r)
         unsafe {
             let (mut head, parent, node) = make_branch(5, 7, 6);
-            let mut uncle = head.as_mut().add(4);
+            let mut uncle = head.as_mut().add(to_heap(4));
             let next = repair_step(node);
             assert_eq!(next.unwrap(), head);
             check_node(head, Color::Red, uncle, parent, None, "head");
