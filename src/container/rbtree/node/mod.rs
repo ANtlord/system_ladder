@@ -9,11 +9,11 @@ mod tests;
 
 pub type NodePtr<T> = Option<NonNull<Node<T>>>;
 
-fn zero_node_ptr<T: Ord>() -> NodePtr<T> {
+fn zero_node_ptr<T>() -> NodePtr<T> {
     None
 }
 
-unsafe fn node_ptr<T: Ord>(reference: &mut Node<T>) -> NodePtr<T> {
+unsafe fn node_ptr<T>(reference: &mut Node<T>) -> NodePtr<T> {
     Some(NonNull::new_unchecked(reference))
 }
 
@@ -60,6 +60,31 @@ fn to_heap<T>(val: T) -> NonNull<T> {
 }
 
 impl<T: Ord> Node<T> {
+    pub unsafe fn add(&mut self, val: NonNull<T>) -> NonNull<Self> {
+        let mut parent = NonNull::new_unchecked(self);
+        let mut value = Some(val);
+        while value.is_some() {
+            let val = value.take().unwrap();
+            let mut parent_clone = parent.clone();
+            let mut node = if val.as_ref() < parent.as_ref().value.as_ref() {
+                Some(&mut parent_clone.as_mut().left)
+            } else if val.as_ref() > parent.as_ref().value.as_ref() {
+                Some(&mut parent_clone.as_mut().right)
+            } else {
+                None
+            };
+
+            if let Some(ref mut x) = node {
+                value = Node::try_set_leg(&mut parent, x, val);
+            }
+        }
+
+        parent
+    }
+
+}
+
+impl<T> Node<T> {
     pub fn head(value: NonNull<T>) -> NonNull<Self> {
         to_heap(Self {
             parent: zero_node_ptr(),
@@ -95,44 +120,15 @@ impl<T: Ord> Node<T> {
     }
 
     unsafe fn sibling(&self) -> NodePtr<T> {
-        let parent = self.parent?;
-        let ref parent = parent.as_ref();
-        let left = parent.left?.as_ref() as *const _;
-        let right = parent.right?.as_ref() as *const _;
-        let selfptr = self as *const _;
-        if left == selfptr {
-            parent.right
-        } else if right == selfptr {
-            parent.left
+        if self.is_left() {
+            self.parent?.as_ref().right
         } else {
-            panic!("Parent of a node is not a left or right node of the parent");
+            self.parent?.as_ref().left
         }
     }
 
     unsafe fn uncle(&self) -> NodePtr<T> {
         self.parent?.as_ref().sibling()
-    }
-
-    pub unsafe fn add(&mut self, val: NonNull<T>) -> NonNull<Self> {
-        let mut parent = NonNull::new_unchecked(self);
-        let mut value = Some(val);
-        while value.is_some() {
-            let val = value.take().unwrap();
-            let mut parent_clone = parent.clone();
-            let mut node = if val.as_ref() < parent.as_ref().value.as_ref() {
-                Some(&mut parent_clone.as_mut().left)
-            } else if val.as_ref() > parent.as_ref().value.as_ref() {
-                Some(&mut parent_clone.as_mut().right)
-            } else {
-                None
-            };
-
-            if let Some(ref mut x) = node {
-                value = Node::try_set_leg(&mut parent, x, val);
-            }
-        }
-
-        parent
     }
 
     unsafe fn try_set_leg(
@@ -203,18 +199,31 @@ impl<T: Ord> Node<T> {
         Ok(())
     }
 
-    unsafe fn replace_child(&mut self, new: NonNull<Self>, old: NonNull<Self>) -> Result<(), ()> {
-        let aleft = &mut self.left;
-        let aright = &mut self.right;
-        if aleft == &Some(old) {
-            *aleft = Some(new);
-            Ok(())
-        } else if aright == &Some(old) {
-            *aright = Some(new);
-            Ok(())
-        } else {
-            Err(())
+    fn is(&self, other: NonNull<Self>) -> bool {
+        unsafe {
+            other.as_ref() as *const _ == self as *const _
         }
+    }
+
+    fn is_left(&self) -> bool {
+        let parent = self.parent.unwrap();
+        let is_left = self.left.map(|x| self.is(x));
+        let is_right = self.right.map(|x| self.is(x));
+        if is_left.and(is_right).is_none() {
+            panic!("fail to get if a node is the left leg");
+        }
+
+        return is_left.unwrap();
+    }
+
+    unsafe fn replace_child(&mut self, new: NonNull<Self>, old: NonNull<Self>) -> Result<(), ()> {
+        if old.as_ref().is_left() {
+            self.left = Some(new);
+        } else {
+            self.right = Some(new);
+        }
+
+        Ok(())
     }
 
     unsafe fn rotate_right(&mut self) -> Result<(), ()> {
@@ -235,6 +244,101 @@ impl<T: Ord> Node<T> {
         });
         Ok(())
     }
+
+    /// return the node has the minimum value which is descendant of pointed one.
+    fn min_node(&self) -> NodePtr<T> {
+        let mut left = self.left;
+        unsafe {
+            while let Some(x) = left.and_then(|x| x.as_ref().left) {
+                left = Some(x)
+            }
+        }
+
+        left
+    }
+
+    fn find_replacement(&self) -> NodePtr<T> {
+        let child = self.right.or(self.left);
+        if self.right.and(self.left).is_none() {
+            return child;
+        }
+
+        return self.min_node();
+    }
+
+    unsafe fn unlink_parent(&mut self) {
+        self.parent.map(|mut x| {
+            if self.is_left() {
+                x.as_mut().left = None;
+            } else {
+                x.as_mut().right = None;
+            }
+        });
+
+        self.parent = None;
+    }
+
+    unsafe fn del_step(&mut self) -> NodePtr<T> {
+        let replacement = self.find_replacement();
+        if replacement.is_none() {
+            if self.color.is_black() {
+                self.fix_double_black()
+            } else {
+                self.sibling().map(|mut x| x.as_mut().color = Color::Red);
+            }
+
+            self.unlink_parent();
+            unallocate(NonNull::new_unchecked(self as *mut _));
+            return None;
+        }
+
+        if self.left.and(self.right).is_some() {
+            return replacement;
+        }
+
+        let mut replacement = replacement.unwrap();
+        if self.parent.is_none() {
+            self.value = replacement.as_ref().value;
+            self.left = None;
+            self.right = None;
+        }
+
+        let mut parent = self.parent;
+        parent.map(|mut x| x.as_mut().replace_child(replacement, NonNull::new_unchecked(self as *mut _)));
+        replacement.as_mut().parent = parent;
+        let are_both_black = self.color.is_black() && replacement.as_ref().color.is_black();
+        if are_both_black {
+            replacement.as_ref().fix_double_black();
+        } else {
+            replacement.as_mut().color = Color::Black;
+        }
+
+        unallocate(NonNull::new_unchecked(self as *mut _));
+        return None;
+    }
+
+    // Note 1: should return head for a tree and a value for a resouce allocator.
+    // Note 2: maximum number of iterations is 2. It's only one for a leaf or for a node with one
+    // child. 2 iterations for a node which has 2 children. In this case the node is replaced by
+    // the node which is most left child (has minimum value) in its left subtree.
+    unsafe fn del(&mut self) -> NonNull<T> {
+        let mut ptr = node_ptr(self);
+        let ret = self.value;
+        while let Some(mut node) = ptr {
+            ptr = node.as_mut().del_step();
+        }
+
+        ret
+    }
+
+    unsafe fn fix_double_black(&self) {
+    }
+
+}
+
+// remove from data the given pointer points to.
+unsafe fn unallocate<T>(ptr: NonNull<T>) {
+    Box::from_raw(ptr.as_ptr());
 }
 
 // new is root => make it black
