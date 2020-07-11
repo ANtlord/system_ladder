@@ -363,3 +363,70 @@ fn replace_child() {
         assert_eq!(head.as_ref().right.unwrap(), node);
     }
 }
+
+#[test]
+fn del_step_leaf() {
+    unsafe {
+        let (head, parent, mut node) = make_branch(5, 6, 7);
+        let res = node.as_mut().del_step();
+        assert_eq!(res, None);
+        assert_eq!(parent.as_ref().right, None);
+        assert_eq!(parent.as_ref().left, None);
+    }
+}
+
+#[test]
+fn del_step_head_with_replacement() {
+    // it tests case when it removes head with a child.
+    // Note: It's impossible to have a head with a grandchild. It inserts a grandchild, child
+    // rotates (look repair_straight_branch test case).
+    unsafe {
+        let mut head = Node::head(to_heap(2));
+        head.as_mut().add(to_heap(3));
+        let res = head.as_mut().del_step();
+        assert_eq!(res, None);
+        assert_eq!(head.as_ref().value.as_ref(), &3);
+        assert_eq!(head.as_ref().left, None);
+        assert_eq!(head.as_ref().right, None);
+    }
+}
+
+#[test]
+fn del_step_internal_node_with_replacement() {
+    // delete 2
+    // a(1)     | a(1)
+    //  \       |  \
+    //   p(2)   |   n(3)
+    //    \     |
+    //     n(3) |
+    unsafe {
+        let (head, mut child, grandchild) = make_branch(1, 2, 3);
+        child.as_mut().del_step();
+        assert_eq!(head.as_ref().right.unwrap(), grandchild);
+        assert_eq!(grandchild.as_ref().parent.unwrap(), head);
+    }
+}
+
+#[test]
+fn del_step_head_with_replacement_and_two_children() {
+    // delete 2
+    //   h(2)      | h(1)
+    //  /    \     |  \
+    // l(1)   r(3) |   r(3)
+    unsafe {
+        let head_val = to_heap(2);
+        let right_val = to_heap(3);
+        let left_val = to_heap(1);
+        let mut head = Node::head(head_val);
+        head.as_mut().add(right_val);
+        let left  = head.as_mut().add(left_val);
+        let res = head.as_mut().del_step();
+        assert_eq!(res, Some(left));
+        assert_eq!(head.as_ref().value, left_val);
+
+        let res = res.unwrap().as_mut().del_step();
+        assert_eq!(res, None);
+        assert_eq!(head.as_ref().left, None);
+        assert_eq!(head.as_ref().right.unwrap().as_ref().value, right_val);
+    }
+}

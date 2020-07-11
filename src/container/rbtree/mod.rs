@@ -32,6 +32,19 @@ impl<T: Ord> Tree<T> {
             None => self.root = Some(Node::head(self.allocate(value))),
         }
     }
+
+    fn del(&mut self, value: T) {
+        let root = self.root;
+        if root.is_none() {
+            return;
+        }
+
+        let root = root.unwrap();
+        let root_ref = unsafe { root.as_ref() };
+        if root_ref.left.or(root_ref.right).is_none() {
+            self.root = None;
+        }
+    }
 }
 
 impl<T: Ord> Default for Tree<T> {

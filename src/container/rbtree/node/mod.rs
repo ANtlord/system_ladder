@@ -272,10 +272,16 @@ impl<T> Node<T> {
                 x.as_mut().right = None;
             }
         });
-
-        self.parent = None;
     }
 
+    // case 1: self doesn't have any child => its sibling is red, self unlink its parent, remove
+    // self. (root can be changed (obviously deleted) only in this case and only if self is root)
+    // case 2: self has both children => self owns value of its replacement and returns it.
+    // case 3: self is root and it has only one child => it means the child is the replacement,
+    // self owns its value, remove the replacement.
+    // case 4: self is internal node => self's parent owns the replacement, replacement has new
+    // parent, remove self. Note: replacement is a leaf (look at repair_step). Note: root doesn't
+    // change because self has parent.
     unsafe fn del_step(&mut self) -> NodePtr<T> {
         let replacement = self.find_replacement();
         if replacement.is_none() {
@@ -290,20 +296,26 @@ impl<T> Node<T> {
             return None;
         }
 
+        let mut replacement = replacement.unwrap();
         if self.left.and(self.right).is_some() {
-            return replacement;
+            self.value = replacement.as_ref().value;
+            return Some(replacement);
         }
 
-        let mut replacement = replacement.unwrap();
         if self.parent.is_none() {
             self.value = replacement.as_ref().value;
             self.left = None;
             self.right = None;
+            unallocate(replacement);
+            return None;
         }
 
         let mut parent = self.parent;
-        parent.map(|mut x| x.as_mut().replace_child(replacement, NonNull::new_unchecked(self as *mut _)));
         replacement.as_mut().parent = parent;
+        parent.map(|mut x| x.as_mut().replace_child(
+            replacement, NonNull::new_unchecked(self as *mut _)
+        ));
+
         let are_both_black = self.color.is_black() && replacement.as_ref().color.is_black();
         if are_both_black {
             replacement.as_ref().fix_double_black();
@@ -407,6 +419,11 @@ unsafe fn repair_step<T: Ord>(mut new: NonNull<Node<T>>) -> NodePtr<T> {
         mem::swap(&mut parent, &mut new);
     }
 
+    //  grandparent |     g
+    //   \          |    /
+    //    parent    |   p
+    //     \        |  /
+    //      new     | n
     if Some(new) == parent.as_ref().left {
         grandparent.as_mut().rotate_right();
     } else if Some(new) == parent.as_ref().right {
