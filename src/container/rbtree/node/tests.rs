@@ -75,6 +75,9 @@ fn add() {
         assert_eq!(child1.as_ref().parent.unwrap(), head);
         assert_eq!(child2.as_ref().parent.unwrap(), head);
         assert_eq!(grandchild.as_ref().parent.unwrap(), child1);
+        assert_eq!(head.as_ref().left.unwrap(), child2);
+        assert_eq!(head.as_ref().right.unwrap(), child1);
+        assert_eq!(child1.as_ref().right.unwrap(), grandchild);
     }
 }
 
@@ -355,6 +358,7 @@ fn replace_child() {
     unsafe {
         let (mut head, parent, node) = make_branch(5, 6, 7);
         assert_eq!(head.as_ref().right.unwrap(), parent);
+        assert_eq!(parent.as_ref().parent.unwrap(), head);
         head.as_mut().replace_child(node, parent);
         assert_eq!(head.as_ref().right.unwrap(), node);
     }

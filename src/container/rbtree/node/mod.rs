@@ -133,17 +133,17 @@ impl<T> Node<T> {
 
     unsafe fn try_set_leg(
         parent: &mut NonNull<Self>,
-        node: &mut NodePtr<T>,
+        child_ptr: &mut NodePtr<T>,
         value: NonNull<T>,
     ) -> Option<NonNull<T>> {
-        match node {
+        match child_ptr {
             Some(ref mut x) => {
                 *parent = NonNull::new_unchecked(x.as_mut());
                 Some(value)
             }
             None => {
                 let new = Self::red(value, *parent);
-                node.replace(new);
+                child_ptr.replace(new);
                 *parent = new;
                 None
             }
@@ -187,7 +187,6 @@ impl<T> Node<T> {
             x.as_mut().parent = node_ptr(self);
         });
 
-        self.parent = Some(right);
         right.as_mut().left = node_ptr(self);
         right.as_mut().parent = ancestor;
         ancestor.map(|mut x| {
@@ -196,6 +195,7 @@ impl<T> Node<T> {
                 .expect("rotate_left: An ancestor is not related to self")
         });
 
+        self.parent = Some(right);
         Ok(())
     }
 
@@ -207,13 +207,10 @@ impl<T> Node<T> {
 
     fn is_left(&self) -> bool {
         let parent = self.parent.unwrap();
-        let is_left = self.left.map(|x| self.is(x));
-        let is_right = self.right.map(|x| self.is(x));
-        if is_left.and(is_right).is_none() {
-            panic!("fail to get if a node is the left leg");
-        }
-
-        return is_left.unwrap();
+        let is_left = unsafe { parent.as_ref().left.map(|x| self.is(x)) };
+        let is_right = unsafe { parent.as_ref().right.map(|x| false) };
+        let side = is_left.or(is_right);
+        return side.expect("fail to get if a node is the left leg");
     }
 
     unsafe fn replace_child(&mut self, new: NonNull<Self>, old: NonNull<Self>) -> Result<(), ()> {
@@ -234,7 +231,6 @@ impl<T> Node<T> {
             x.as_mut().parent = node_ptr(self);
         });
 
-        self.parent = Some(left);
         left.as_mut().right = node_ptr(self);
         left.as_mut().parent = ancestor;
         ancestor.map(|mut x| {
@@ -242,6 +238,8 @@ impl<T> Node<T> {
                 .replace_child(left, NonNull::new_unchecked(self))
                 .expect("rotate_left: An ancestor is not related to self")
         });
+
+        self.parent = Some(left);
         Ok(())
     }
 
