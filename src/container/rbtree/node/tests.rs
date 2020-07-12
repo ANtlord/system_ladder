@@ -1,4 +1,5 @@
 use super::*;
+use std::mem;
 
 type Nodeu8 = NonNull<Node<u8>>;
 type LongBranch = (Nodeu8, Nodeu8, Nodeu8, Nodeu8);
@@ -410,23 +411,86 @@ fn del_step_internal_node_with_replacement() {
 #[test]
 fn del_step_head_with_replacement_and_two_children() {
     // delete 2
-    //   h(2)      | h(1)
-    //  /    \     |  \
-    // l(1)   r(3) |   r(3)
+    //   h(2)      |  h(3)
+    //  /    \     |  /
+    // l(1)   r(3) | l(1)
     unsafe {
         let head_val = to_heap(2);
         let right_val = to_heap(3);
         let left_val = to_heap(1);
         let mut head = Node::head(head_val);
-        head.as_mut().add(right_val);
-        let left  = head.as_mut().add(left_val);
+        let right = head.as_mut().add(right_val);
+        let left = head.as_mut().add(left_val);
         let res = head.as_mut().del_step();
-        assert_eq!(res, Some(left));
-        assert_eq!(head.as_ref().value, left_val);
+        assert_eq!(res, Some(right));
+        assert_eq!(head.as_ref().value, right_val);
 
         let res = res.unwrap().as_mut().del_step();
         assert_eq!(res, None);
-        assert_eq!(head.as_ref().left, None);
-        assert_eq!(head.as_ref().right.unwrap().as_ref().value, right_val);
+        assert_eq!(head.as_ref().right, None);
+        assert_eq!(head.as_ref().left.unwrap().as_ref().value, left_val);
+    }
+}
+
+unsafe fn add_node<T: Ord>(mut parent: NonNull<Node<T>>, value: T) -> NonNull<Node<T>>  {
+    parent.as_mut().add(to_heap(value))
+}
+
+#[test]
+fn min_node() {
+    unsafe {
+        let (head, parent, node) = make_branch(5, 6, 7);
+        {
+            let min = head.as_ref().min_node();
+            assert_eq!(min, None, "min must be None. head doesn't have the left child.")
+        }
+
+        {
+            let left = add_node(head, 1);
+            let min = head.as_ref().min_node();
+            assert_eq!(min.unwrap(), left, "min node is not 1");
+        }
+    }
+}
+
+fn nodes_from_iter<T: Ord>(head_val: T, source: Vec<T>) -> NonNull<Node<T>> {
+    let mut head = Node::head(to_heap(head_val));
+    source.into_iter().for_each(|x| unsafe {
+        add_node(head, x);
+    });
+    head
+}
+
+mod find_replacement {
+    use super::*;
+
+    #[test]
+    fn left() {
+        unsafe {
+            let (head, parent, node) = make_branch(5, 6, 7);
+            let replacement = head.as_ref().find_replacement();
+            assert_eq!(replacement.unwrap(), parent);
+        }
+    }
+
+    #[test]
+    fn right() {
+        unsafe {
+            let mut head = Node::head(to_heap(2));
+            let right = add_node(head, 3);
+            let left = add_node(head, 1);
+            let replacement = head.as_ref().find_replacement();
+            assert_eq!(replacement.unwrap(), right);
+        }
+    }
+
+    #[test]
+    fn right_left() {
+        unsafe {
+            let right_left_val = 8;
+            let head = nodes_from_iter(5, vec![1, 10, right_left_val]);
+            let replacement = head.as_ref().find_replacement();
+            assert_eq!(replacement.unwrap().as_ref().value.as_ref(), &right_left_val);
+        }
     }
 }

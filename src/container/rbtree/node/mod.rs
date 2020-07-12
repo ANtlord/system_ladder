@@ -17,6 +17,7 @@ unsafe fn node_ptr<T>(reference: &mut Node<T>) -> NodePtr<T> {
     Some(NonNull::new_unchecked(reference))
 }
 
+#[derive(Clone, Copy)]
 pub enum Color {
     Red,
     Black,
@@ -243,25 +244,21 @@ impl<T> Node<T> {
         Ok(())
     }
 
-    /// return the node has the minimum value which is descendant of pointed one.
-    fn min_node(&self) -> NodePtr<T> {
+    /// return the descendant node of pointed one which has the minimum.
+    unsafe fn min_node(&self) -> NodePtr<T> {
         let mut left = self.left;
-        unsafe {
-            while let Some(x) = left.and_then(|x| x.as_ref().left) {
-                left = Some(x)
-            }
+        while let Some(x) = left.and_then(|x| x.as_ref().left) {
+            left = Some(x)
         }
 
         left
     }
 
-    fn find_replacement(&self) -> NodePtr<T> {
-        let child = self.right.or(self.left);
-        if self.right.and(self.left).is_none() {
-            return child;
+    unsafe fn find_replacement(&self) -> NodePtr<T> {
+        match self.left.and(self.right) {
+            Some(right) => right.as_ref().min_node().or(Some(right)),
+            None => self.left.or(self.right)
         }
-
-        return self.min_node();
     }
 
     unsafe fn unlink_parent(&mut self) {
@@ -274,14 +271,14 @@ impl<T> Node<T> {
         });
     }
 
-    // case 1: self doesn't have any child => its sibling is red, self unlink its parent, remove
-    // self. (root can be changed (obviously deleted) only in this case and only if self is root)
-    // case 2: self has both children => self owns value of its replacement and returns it.
-    // case 3: self is root and it has only one child => it means the child is the replacement,
-    // self owns its value, remove the replacement.
-    // case 4: self is internal node => self's parent owns the replacement, replacement has new
-    // parent, remove self. Note: replacement is a leaf (look at repair_step). Note: root doesn't
-    // change because self has parent.
+    // case 1: self doesn't have any child -> so it's a leaf
+    // case 2: self has both children -> so we go to the node which is the smallest node in its
+    // right branch. The node is a leaf or it's a node with a right child which is a leaf.
+    // case 3: self is root and it has only one child (because of case 2) -> so it's easy to get
+    // the replacement value and remove the replacement.
+    // case 4: self is internal node and it has only right child (because case 2) the child is
+    // the replacement and a leaf (because of case 2) -> so self can be replaced by the child
+    // without caring of its children
     unsafe fn del_step(&mut self) -> NodePtr<T> {
         let replacement = self.find_replacement();
         if replacement.is_none() {
@@ -318,7 +315,7 @@ impl<T> Node<T> {
 
         let are_both_black = self.color.is_black() && replacement.as_ref().color.is_black();
         if are_both_black {
-            replacement.as_ref().fix_double_black();
+            replacement.as_mut().fix_double_black();
         } else {
             replacement.as_mut().color = Color::Black;
         }
@@ -341,7 +338,107 @@ impl<T> Node<T> {
         ret
     }
 
-    unsafe fn fix_double_black(&self) {
+    // Note 1: Before all sibling of the node is black.
+    // Note 2: self is a leaf node (without children) or it's an internal node with only one child.
+    unsafe fn fix_double_black_step(&mut self) -> NodePtr<T> {
+        let mut sibling = match self.sibling() {
+            Some(x) => x,
+            None => return self.parent,
+        };
+
+        let mut parent = self.parent.unwrap();
+        if sibling.as_ref().color.is_red() {
+            sibling.as_mut().color = Color::Black;
+            parent.as_mut().color = Color::Red;
+            if self.is_left() {
+                parent.as_mut().rotate_left();
+            } else {
+                parent.as_mut().rotate_right();
+            }
+
+            return node_ptr(self);
+        }
+
+        if let Some(Color::Red) = sibling.as_ref().left.map(|x| x.as_ref().color) {
+            let mut sibling_left = sibling.as_ref().left.unwrap();
+            if sibling.as_ref().is_left() {
+                // initial (left left)
+                //       p(?)
+                //      /    \
+                //    s(b)   n(b)
+                //   /   \
+                // sl(r) sr(?)
+                // -----------------
+                //    s(?)
+                //   /    \
+                // sl(b)  p(b)
+                //       /    \
+                //      sr(?) n(b)
+                sibling_left.as_mut().color = sibling.as_ref().color;
+                sibling.as_mut().color = parent.as_ref().color;
+                parent.as_mut().rotate_right();
+            } else {
+                // initial (right left)
+                //    p(?)
+                //   /    \
+                // n(b)   s(b)
+                //       /    \
+                //      sl(?) sr(b)
+                // -----------------
+                //       p(?)
+                //      /    \
+                //    n(b)   sl(?)
+                //             \    
+                //              s(b)
+                //               \
+                //                sl(?)
+                //----------------------
+                //      sl(?)
+                //     /    \
+                //    p(b)   s(b)
+                //   /        \    
+                //  n(b)       sl(?)
+                sibling_left.as_mut().color = parent.as_ref().color;
+                sibling.as_mut().rotate_right();
+                parent.as_mut().rotate_left();
+            }
+
+            parent.as_mut().color = Color::Black;
+            return None;
+        }
+
+        if let Some(Color::Red) = sibling.as_ref().right.map(|x| x.as_ref().color) {
+            let mut sibling_right = sibling.as_ref().left.unwrap();
+            if sibling.as_ref().is_left() {
+                sibling_right.as_mut().color = parent.as_ref().color;
+                sibling.as_mut().rotate_left();
+                parent.as_mut().rotate_right();
+            } else {
+                sibling_right.as_mut().color = sibling.as_ref().color;
+                sibling.as_mut().color = parent.as_ref().color;
+                parent.as_mut().rotate_left();
+            }
+
+            parent.as_mut().color = Color::Black;
+            return None;
+        }
+
+        sibling.as_mut().color = Color::Red;
+        return match parent.as_ref().color {
+            Color::Black => Some(parent),
+            Color::Red => {
+                parent.as_mut().color = Color::Black;
+                None
+            }
+        }
+    }
+
+    unsafe fn fix_double_black(&mut self) {
+        let mut node = node_ptr(self);
+        while let Some(_) = node.map(|x| x.as_ref().parent) {
+            node = node.unwrap().as_mut().fix_double_black_step()
+        }
+
     }
 
 }
