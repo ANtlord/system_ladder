@@ -338,14 +338,17 @@ impl<T> Node<T> {
         ret
     }
 
-    // Note 1: Before all sibling of the node is black.
-    // Note 2: self is a leaf node (without children) or it's an internal node with only one child.
     unsafe fn fix_double_black_step(&mut self) -> NodePtr<T> {
         let mut sibling = match self.sibling() {
             Some(x) => x,
             None => return self.parent,
         };
 
+        //   p(?)    |    s(b)
+        //  /    \   |   /
+        // n(b)  s(r)|  p(r)
+        //           | /
+        //           |n(b)
         let mut parent = self.parent.unwrap();
         if sibling.as_ref().color.is_red() {
             sibling.as_mut().color = Color::Black;
@@ -383,7 +386,7 @@ impl<T> Node<T> {
                 //   /    \
                 // n(b)   s(b)
                 //       /    \
-                //      sl(?) sr(b)
+                //      sl(r) sr(?)
                 // -----------------
                 //       p(?)
                 //      /    \
@@ -391,7 +394,7 @@ impl<T> Node<T> {
                 //             \    
                 //              s(b)
                 //               \
-                //                sl(?)
+                //                sr(?)
                 //----------------------
                 //      sl(?)
                 //     /    \
@@ -408,7 +411,7 @@ impl<T> Node<T> {
         }
 
         if let Some(Color::Red) = sibling.as_ref().right.map(|x| x.as_ref().color) {
-            let mut sibling_right = sibling.as_ref().left.unwrap();
+            let mut sibling_right = sibling.as_ref().right.unwrap();
             if sibling.as_ref().is_left() {
                 sibling_right.as_mut().color = parent.as_ref().color;
                 sibling.as_mut().rotate_left();
@@ -433,6 +436,8 @@ impl<T> Node<T> {
         }
     }
 
+    // Note 1: Before all sibling of the node is black.
+    // Note 2: self is a leaf node (without children)
     unsafe fn fix_double_black(&mut self) {
         let mut node = node_ptr(self);
         while let Some(_) = node.map(|x| x.as_ref().parent) {

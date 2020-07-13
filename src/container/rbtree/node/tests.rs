@@ -494,3 +494,137 @@ mod find_replacement {
         }
     }
 }
+
+mod fix_double_black {
+    use super::*;
+
+    #[test]
+    fn no_sibling() {
+        unsafe {
+            let head = nodes_from_iter(5, vec![1]);
+            let res = head.as_ref().left.unwrap().as_mut().fix_double_black_step();
+            assert_eq!(res, Some(head));
+        }
+    }
+
+    #[test]
+    fn red_right_sibling() {
+        //   p(?)    |    s(b)
+        //  /    \   |   /
+        // n(b)  s(r)|  p(r)
+        //           | /
+        //           |n(b)
+        unsafe {
+            let parent = nodes_from_iter(5, vec![1, 10]);
+            let mut sibling = parent.as_ref().right.unwrap();
+            sibling.as_mut().color = Color::Red;
+            let mut node = parent.as_ref().left.unwrap();
+            node.as_mut().color = Color::Black;
+            let res = node.as_mut().fix_double_black_step();
+            assert_eq!(res, Some(node));
+            check_node(node, Color::Black, None, None, parent, "leaf node");
+            check_node(parent, Color::Red, node, None, sibling, "parent node");
+            check_node(sibling, Color::Black, parent, None, None, "sibling node");
+        }
+    }
+
+    #[test]
+    fn red_left_sibling() {
+        //   p(?)    | s(b)
+        //  /    \   |  \
+        // s(r)  n(b)|   p(r)
+        //           |    \
+        //           |     n(b)
+        unsafe {
+            let parent = nodes_from_iter(5, vec![1, 10]);
+            let mut sibling = parent.as_ref().left.unwrap();
+            sibling.as_mut().color = Color::Red;
+            let mut right = parent.as_ref().right.unwrap();
+            right.as_mut().color = Color::Black;
+            let res = right.as_mut().fix_double_black_step();
+            assert_eq!(res, Some(right));
+            check_node(right, Color::Black, None, None, parent, "leaf node");
+            check_node(parent, Color::Red, None, right, sibling, "parent node");
+            check_node(sibling, Color::Black, None, parent, None, "sibling node");
+        }
+    }
+
+    #[test]
+    fn black_sibling_red_left_child() {
+        //      p(?)    |    s(?)
+        //     /    \   |   /    \
+        //    s(b)  n(b)| sl(b)  p(b)
+        //   /          |            \
+        // sl(r)        |            n(b)
+        unsafe {
+            let parent = nodes_from_iter(5, vec![1, 10, 0]);
+            let parent_color = parent.as_ref().color;
+            let mut sibling = parent.as_ref().left.unwrap();
+            sibling.as_mut().color = Color::Black;
+            let mut sibling_left = sibling.as_ref().left.unwrap();
+            sibling_left.as_mut().color = Color::Red;
+            let mut node = parent.as_ref().right.unwrap();
+            node.as_mut().color = Color::Black;
+            assert_eq!(node.as_mut().fix_double_black_step(), None);
+            check_node(parent, Color::Black, None, node, sibling, "parent node");
+            check_node(sibling, parent_color, sibling_left, parent, None, "sibling node");
+            check_node(sibling_left, Color::Black, None, None, sibling, "sibling_left node");
+            check_node(node, Color::Black, None, None, parent, "leaf node");
+        }
+    }
+
+    #[test]
+    fn black_sibling_red_right_child() {
+        //      p(?)    |   sr(?)
+        //     /    \   |  /    \
+        //    s(b)  n(b)| s(b)   p(b)
+        //     \        |         \
+        //      sr(r)   |          n(b)
+        unsafe {
+            let parent = nodes_from_iter(5, vec![1, 10, 2]);
+            let parent_color = parent.as_ref().color;
+            let mut sibling = parent.as_ref().left.unwrap();
+            sibling.as_mut().color = Color::Black;
+            let mut sibling_right = sibling.as_ref().right.unwrap();
+            sibling_right.as_mut().color = Color::Red;
+            let mut node = parent.as_ref().right.unwrap();
+            node.as_mut().color = Color::Black;
+            assert_eq!(node.as_mut().fix_double_black_step(), None);
+            check_node(parent, Color::Black, None, node, sibling_right, "parent node");
+            check_node(sibling, Color::Black, None, None, sibling_right, "sibling node");
+            check_node(sibling_right, parent_color, sibling, parent, None, "sibling_right node");
+            check_node(node, Color::Black, None, None, parent, "leaf node");
+        }
+    }
+
+    #[test]
+    fn black_sibling_without_red_child_and_black_parent() {
+        //      p(b)    |   p(b)
+        //     /    \   |  /    \
+        //    s(b)  n(b)| s(r)   n(b)
+        unsafe {
+            let mut parent = nodes_from_iter(5, vec![1, 10]);
+            parent.as_mut().color = Color::Black;
+            let mut sibling = parent.as_mut().left.unwrap();
+            sibling.as_mut().color = Color::Black;
+            let res = parent.as_ref().right.unwrap().as_mut().fix_double_black_step();
+            assert_eq!(res, Some(parent));
+            assert!(parent.as_ref().left.unwrap().as_ref().color.is_red());
+        }
+    }
+
+    fn black_sibling_without_red_child_and_red_parent() {
+        //      p(r)    |   p(b)
+        //     /    \   |  /    \
+        //    s(b)  n(b)| s(b)   n(b)
+        unsafe {
+            let mut parent = nodes_from_iter(5, vec![1, 10]);
+            parent.as_mut().color = Color::Red;
+            let mut sibling = parent.as_mut().left.unwrap();
+            sibling.as_mut().color = Color::Black;
+            let res = parent.as_ref().right.unwrap().as_mut().fix_double_black_step();
+            assert_eq!(res, None);
+            assert!(parent.as_ref().color.is_black());
+        }
+    }
+}
