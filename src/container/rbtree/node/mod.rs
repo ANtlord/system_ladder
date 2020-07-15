@@ -328,7 +328,7 @@ impl<T> Node<T> {
     // Note 2: maximum number of iterations is 2. It's only one for a leaf or for a node with one
     // child. 2 iterations for a node which has 2 children. In this case the node is replaced by
     // the node which is most left child (has minimum value) in its left subtree.
-    unsafe fn del(&mut self) -> NonNull<T> {
+    pub unsafe fn del(&mut self) -> NonNull<T> {
         let mut ptr = node_ptr(self);
         let ret = self.value;
         while let Some(mut node) = ptr {
@@ -339,18 +339,24 @@ impl<T> Node<T> {
     }
 
     unsafe fn fix_double_black_step(&mut self) -> NodePtr<T> {
+        // it's impossible to be a black node without sibling because it violates property 5 (about
+        // equal number of black nodes from a given node to its descendant leafs). The check look
+        // like redudant. It seems impossible to call the function for a red node. Only a red node
+        // can be without a sibling.
         let mut sibling = match self.sibling() {
             Some(x) => x,
             None => return self.parent,
         };
 
-        //   p(?)    |    s(b)
+        //   p(b)    |    s(b)
         //  /    \   |   /
         // n(b)  s(r)|  p(r)
         //           | /
         //           |n(b)
         let mut parent = self.parent.unwrap();
         if sibling.as_ref().color.is_red() {
+            // parent is black because because the sibling is red. If the parent would be a red
+            // then the sibling and the node are red.
             sibling.as_mut().color = Color::Black;
             parent.as_mut().color = Color::Red;
             if self.is_left() {
@@ -368,16 +374,18 @@ impl<T> Node<T> {
                 // initial (left left)
                 //       p(?)
                 //      /    \
-                //    s(b)   n(b)
+                //    s(b)   n(b) x
                 //   /   \
-                // sl(r) sr(?)
+                // sl(r) sr(r) // sr can't be a black node because it violates property 5.
+                // p(r)-s(b)-sr(b) but p(r)-n(b). So it means that one branch of p has more blacks
+                // than another. It doesn't matter what color the parent.
                 // -----------------
                 //    s(?)
                 //   /    \
                 // sl(b)  p(b)
                 //       /    \
-                //      sr(?) n(b)
-                sibling_left.as_mut().color = sibling.as_ref().color;
+                //      sr(r) n(b) x
+                sibling_left.as_mut().color = Color::Black;
                 sibling.as_mut().color = parent.as_ref().color;
                 parent.as_mut().rotate_right();
             } else {
@@ -386,7 +394,7 @@ impl<T> Node<T> {
                 //   /    \
                 // n(b)   s(b)
                 //       /    \
-                //      sl(r) sr(?)
+                //      sl(r) sr(r)
                 // -----------------
                 //       p(?)
                 //      /    \
@@ -394,13 +402,13 @@ impl<T> Node<T> {
                 //             \    
                 //              s(b)
                 //               \
-                //                sr(?)
+                //                sr(r)
                 //----------------------
                 //      sl(?)
                 //     /    \
                 //    p(b)   s(b)
                 //   /        \    
-                //  n(b)       sl(?)
+                //  n(b) x     sr(r)
                 sibling_left.as_mut().color = parent.as_ref().color;
                 sibling.as_mut().rotate_right();
                 parent.as_mut().rotate_left();
@@ -417,7 +425,7 @@ impl<T> Node<T> {
                 sibling.as_mut().rotate_left();
                 parent.as_mut().rotate_right();
             } else {
-                sibling_right.as_mut().color = sibling.as_ref().color;
+                sibling_right.as_mut().color = Color::Black;
                 sibling.as_mut().color = parent.as_ref().color;
                 parent.as_mut().rotate_left();
             }
@@ -436,8 +444,9 @@ impl<T> Node<T> {
         }
     }
 
-    // Note 1: Before all sibling of the node is black.
-    // Note 2: self is a leaf node (without children)
+    // Note 1: Sibling of the node is black.
+    // Note 2: Self is a leaf node (without children). It can be irrelevant for the second
+    // iteration.
     unsafe fn fix_double_black(&mut self) {
         let mut node = node_ptr(self);
         while let Some(_) = node.map(|x| x.as_ref().parent) {
@@ -458,18 +467,18 @@ unsafe fn unallocate<T>(ptr: NonNull<T>) {
 // new's parent is red and new's uncle is red => make them black, make grandparent red; repeat for
 // the grandparent.
 // new's parent is red and new's uncle is black or there is no uncle =>
-//    g
+//    g(b)
 //   /
-//  p
+//  p(r)
 //   \
-//    n
+//    n(r)
 //  - if new node is the right leg of its parent and the parent is the left leg of grandparent =>
 //      rotate parent to left to get straight branch: g-n-p. Next actions are for the parent node.
-//  g
+//  g(b)
 //   \
-//    p
+//    p(r)
 //   /
-//  n
+//  n(r)
 //  - else if new node is the left leg of its parent and the parent is the right leg of grandparent =>
 //      rotate parent to right to get straight branch: g-n-p. Next actions are for the parent node.
 //  - if the new node is left leg of its parent then rotate the grandparent to right.

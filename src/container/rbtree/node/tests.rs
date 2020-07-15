@@ -601,7 +601,7 @@ mod fix_double_black {
     fn black_sibling_without_red_child_and_black_parent() {
         //      p(b)    |   p(b)
         //     /    \   |  /    \
-        //    s(b)  n(b)| s(r)   n(b)
+        //    s(b)  n(b)| s(r)   n(b) x
         unsafe {
             let mut parent = nodes_from_iter(5, vec![1, 10]);
             parent.as_mut().color = Color::Black;
@@ -616,7 +616,7 @@ mod fix_double_black {
     fn black_sibling_without_red_child_and_red_parent() {
         //      p(r)    |   p(b)
         //     /    \   |  /    \
-        //    s(b)  n(b)| s(b)   n(b)
+        //    s(b)  n(b)| s(r)   n(b) x
         unsafe {
             let mut parent = nodes_from_iter(5, vec![1, 10]);
             parent.as_mut().color = Color::Red;
@@ -625,6 +625,7 @@ mod fix_double_black {
             let res = parent.as_ref().right.unwrap().as_mut().fix_double_black_step();
             assert_eq!(res, None);
             assert!(parent.as_ref().color.is_black());
+            assert!(sibling.as_ref().color.is_red());
         }
     }
 }

@@ -17,6 +17,10 @@ impl<T: Ord> Tree<T> {
         unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(value))) }
     }
 
+    fn unallocate(&self, value: NonNull<T>) {
+        unsafe { Box::from_raw(value.as_ptr()); }
+    }
+
     fn add(&mut self, value: T) {
         match self.root {
             Some(mut x) => unsafe {
@@ -33,17 +37,43 @@ impl<T: Ord> Tree<T> {
         }
     }
 
-    fn del(&mut self, value: T) {
+    fn find(&self, value: &T) -> NodePtr<T> {
+        let mut node = self.root;
+        while let Some(current) = node {
+            let current_val = unsafe { current.as_ref().value.as_ref() };
+            if current_val == value {
+                return node;
+            } else if current_val > value {
+                node = unsafe { current.as_ref().left };
+            } else {
+                node = unsafe { current.as_ref().right };
+            }
+        }
+
+        node
+    }
+
+    fn del(&mut self, value: &T) {
         let root = self.root;
         if root.is_none() {
             return;
         }
 
-        let root = root.unwrap();
-        let root_ref = unsafe { root.as_ref() };
+        let mut root = root.unwrap();
+        let root_ref = unsafe { root.as_mut() };
+        let mut node = match self.find(value) {
+            Some(x) => x,
+            None => return,
+        };
+
         if root_ref.left.or(root_ref.right).is_none() {
+            let val = unsafe { root_ref.del() };
+            self.unallocate(val);
             self.root = None;
         }
+
+        let val = unsafe { node.as_mut().del() };
+        self.unallocate(val);
     }
 }
 
@@ -211,5 +241,27 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn delete() {
+        //     __b3__
+        //    /      \
+        //   b1       b5
+        //  / \      /  \
+        // b0  b2   b4  r7
+        //             /  \
+        //            b6   b8
+        //                   \
+        //                   r9
+        let mut tree = make_tree(10);
+        let red_node_collector: RedCollector<u8> = RedCollector::new();
+        for node in red_node_collector.data.borrow().iter() {
+            let val = unsafe { node.value.as_ref() };
+            assert!([7, 9].contains(val), "unexpected value {}", val);
+        }
+
+
+
     }
 }
