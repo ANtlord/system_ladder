@@ -1,2 +1,7 @@
 /target
 **/*.rs.bk
+.ccls-cache
+.nvimrc
+.idea
+.gdb_history
+*.o
