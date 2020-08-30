@@ -8,6 +8,10 @@ use std::ptr::NonNull;
 use self::node::Node;
 use self::node::NodePtr;
 
+// TODO: exchange its left child and right child. In this case, a node can be justified red or
+// black according to if its right child is larger than its left child.
+// TODO: modify it to left leaning red-black tree
+// http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.139.282&rep=rep1&type=pdf
 pub struct Tree<T> {
     root: NodePtr<T>,
 }
