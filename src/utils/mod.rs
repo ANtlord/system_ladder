@@ -56,8 +56,7 @@ fn actual_quicksort<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: &F) {
 }
 
 pub fn _merge<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: &F) {
-    let len = myslice.len();
-    let mid = len / 2;
+    let mid = myslice.len() / 2;
     let mut buf = Vec::with_capacity(mid);
     let mut myslice_ptr = myslice.as_mut_ptr();
     let mut bufptr = buf.as_mut_ptr();
@@ -69,41 +68,40 @@ pub fn _merge<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: &F) {
     let mut left_cursor = 0;
     let mut right_cursor = mid;
     let mut i = 0;
-    debug_assert!(mid == buf.len());
     while left_cursor < mid && right_cursor < myslice.len() {
-        let left = &buf[left_cursor];
-        let right = &myslice[right_cursor];
-        if less(left, right) {
+        if less(&buf[left_cursor], &myslice[right_cursor]) {
             unsafe {
                 ptr::copy_nonoverlapping(bufptr.add(left_cursor), myslice_ptr.add(i), 1);
             }
 
             left_cursor += 1;
-            i += 1;
-            continue;
+        } else {
+            myslice.swap(i, right_cursor);
+            right_cursor += 1;
         }
 
-        myslice.swap(i, right_cursor);
-        right_cursor += 1;
         i += 1;
     }
 
-    while left_cursor < mid {
+    if left_cursor < mid {
         unsafe {
-            ptr::copy_nonoverlapping(bufptr.add(left_cursor), myslice_ptr.add(i), 1);
+            ptr::copy_nonoverlapping(bufptr.add(left_cursor), myslice_ptr.add(i), mid - left_cursor);
         }
 
-        i += 1;
-        left_cursor += 1;
+        // i += 1;
+        // left_cursor += 1;
     }
 
-    while right_cursor < myslice.len() {
-        myslice.swap(i, right_cursor);
-        i += 1;
-        right_cursor += 1;
-    }
+    // while right_cursor < myslice.len() {
+    //     myslice.swap(i, right_cursor);
+    //     i += 1;
+    //     right_cursor += 1;
+    // }
+
     unsafe {
-        let v: Vec<u8> = mem::transmute(buf); // TODO: to prevent drops of T. Find a better way. Look closer to merge_sort in standard library or Rustonomicon
+        // TODO: to prevent drops of T. Find a better way.
+        // Look closer to merge_sort in standard library or Rustonomicon
+        let _: Vec<u8> = mem::transmute(buf);
     }
 }
 
@@ -131,6 +129,24 @@ pub fn quicksort<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: F) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time;
+
+    fn random() -> u32 {
+        let v = time::SystemTime::now().duration_since(time::UNIX_EPOCH)
+            .unwrap().as_nanos() as u32;
+        let mut random = v;
+        random ^= random << 13;
+        random ^= random >> 17;
+        random << 5
+    }
+
+
+    fn must_sorted(v: Vec<u32>) {
+        let res = v.iter().enumerate().skip(1).find(|(i, e)| e < &&v[i - 1]);
+        if let Some((index, e)) = res {
+            assert!(false, "{} > {}. Index = {}", e, v[index - 1], index);
+        }
+    }
 
     mod quicksort {
         use super::*;
@@ -183,16 +199,58 @@ mod tests {
             quicksort(&mut v, |x, y| x < y);
             assert_eq!(v, vec![1, 2]);
         }
+
+        fn quicksort_random_set(count: usize) -> Vec<u32> {
+            let mut ret: Vec<u32> = vec![0; count].into_iter().map(|_| random()).collect();
+            quicksort(&mut ret, |x, y| x < y);
+            ret
+        }
+
+        #[test]
+        fn random_5000() {
+            must_sorted(quicksort_random_set(5000));
+        }
+
+        #[test]
+        fn random_1000() {
+            must_sorted(quicksort_random_set(1000));
+        }
+
+        #[test]
+        fn random_100() {
+            must_sorted(quicksort_random_set(100));
+        }
     }
 
     mod insertion {
         use super::*;
 
         #[test]
-        fn qweasd() {
+        fn odd_reverse_sorted_elements() {
             let mut v = vec![3,2,1];
             insertionsort(&mut v, |a, b| a < b);
             assert_eq!(v, vec![1,2,3]);
+        }
+
+        fn insertionsort_random_set(count: usize) -> Vec<u32> {
+            let mut ret: Vec<u32> = vec![0; count].into_iter().map(|_| random()).collect();
+            insertionsort(&mut ret, |x, y| x < y);
+            ret
+        }
+
+        #[test]
+        fn random_500() {
+            must_sorted(insertionsort_random_set(500));
+        }
+
+        #[test]
+        fn random_250() {
+            must_sorted(insertionsort_random_set(250));
+        }
+
+        #[test]
+        fn random_100() {
+            must_sorted(insertionsort_random_set(100));
         }
     }
 
@@ -200,14 +258,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn odd_elements() {
+        fn odd_reverse_sorted_elements() {
             let mut v = vec![3,2,1];
             mergesort(&mut v, |a, b| a < b);
             assert_eq!(v, vec![1,2,3]);
         }
 
         #[test]
-        fn even_elements() {
+        fn even_reverse_sorted_elements() {
             let mut v = vec![4,3,2,1];
             mergesort(&mut v, |x, y| x < y);
             assert_eq!(v, vec![1,2,3,4]);
@@ -230,7 +288,7 @@ mod tests {
         }
 
         #[test]
-        fn drop() {
+        fn no_drops() {
             let mut drop_count = 0u32;
             let mut v = vec![
                 Droplet(20, &mut drop_count as *mut _),
@@ -246,6 +304,27 @@ mod tests {
 
             mergesort(&mut v, |x, y| x.0 < y.0);
             assert_eq!(drop_count, 0);
+        }
+
+        fn mergesort_random_set(count: usize) -> Vec<u32> {
+            let mut ret: Vec<u32> = vec![0; count].into_iter().map(|_| random()).collect();
+            mergesort(&mut ret, |x, y| x < y);
+            ret
+        }
+
+        #[test]
+        fn random_5000() {
+            must_sorted(mergesort_random_set(5000));
+        }
+
+        #[test]
+        fn random_1000() {
+            must_sorted(mergesort_random_set(1000));
+        }
+
+        #[test]
+        fn random_100() {
+            must_sorted(mergesort_random_set(100));
         }
     }
 }

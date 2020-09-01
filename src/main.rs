@@ -11,6 +11,7 @@ mod tree;
 mod fs;
 mod container;
 
+use std::time;
 use std::env::args;
 use std::process::exit;
 use std::os::unix::fs::MetadataExt;
@@ -39,9 +40,21 @@ impl<T> Exit<T> for Option<T> {
     }
 }
 
+fn random() -> u32 {
+    let v = time::SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_nanos() as u64;
+    let mut random = v as u32;
+    random ^= random << 13;
+    random ^= random >> 17;
+    random ^= random << 5;
+    random
+}
+
 fn main() {
-    let filename = args().skip(1).next().or_exit("Point filename");
-    println!("{}", filename);
+    for i in 0 .. 100 {
+        println!("{}", random());
+    }
+    // let filename = args().skip(1).next().or_exit("Point filename");
+    // println!("{}", filename);
     // let filename = args().skip(1).next().expect("Point filename");
     // let metadata = fs::File::open(filename).and_then(|x| x.metadata()).expect("Can't read file");
     // println!("{:o}", metadata.mode())
