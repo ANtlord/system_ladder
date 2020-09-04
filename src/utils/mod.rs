@@ -50,12 +50,16 @@ fn actual_quicksort<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: &F) {
         }
     }
 
-    // myslice.swap(i, last);
     actual_quicksort(&mut myslice[0 .. lt], less);
     actual_quicksort(&mut myslice[gt + 1 .. len], less);
 }
 
 pub fn _merge<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: &F) {
+    if myslice.len() < 20 {
+        insertionsort(myslice, less);
+        return;
+    }
+
     let mid = myslice.len() / 2;
     let mut buf = Vec::with_capacity(mid);
     let mut myslice_ptr = myslice.as_mut_ptr();
@@ -87,16 +91,7 @@ pub fn _merge<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: &F) {
         unsafe {
             ptr::copy_nonoverlapping(bufptr.add(left_cursor), myslice_ptr.add(i), mid - left_cursor);
         }
-
-        // i += 1;
-        // left_cursor += 1;
     }
-
-    // while right_cursor < myslice.len() {
-    //     myslice.swap(i, right_cursor);
-    //     i += 1;
-    //     right_cursor += 1;
-    // }
 
     unsafe {
         // TODO: to prevent drops of T. Find a better way.
