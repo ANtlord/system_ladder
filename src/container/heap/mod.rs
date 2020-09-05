@@ -1,4 +1,5 @@
 use std::ptr::NonNull;
+use crate::utils::vector::sink;
 
 pub struct Heap<T> {
     data: Vec<T>,
@@ -8,11 +9,11 @@ pub struct Heap<T> {
 // max oriented heap
 impl<T: Ord> Heap<T> {
     fn max() -> Self {
-        Self{data: Vec::new(), predicate: Box::new(|a, b| a > b)}
+        Self{data: Vec::new(), predicate: Box::new(|a, b| a < b)}
     }
 
     fn min() -> Self {
-        Self{data: Vec::new(), predicate: Box::new(|a, b| a < b)}
+        Self{data: Vec::new(), predicate: Box::new(|a, b| a > b)}
     }
 
     fn push(&mut self, value: T) {
@@ -71,28 +72,14 @@ impl<T: Ord> Heap<T> {
     fn swim(&mut self, mut pos: usize) {
         pos += 1;
         let predicate = &self.predicate;
-        while pos > 1 && predicate(&self.data[pos - 1], &self.data[pos / 2 - 1]) {
+        while pos > 1 && predicate(&self.data[pos / 2 - 1], &self.data[pos - 1]) {
             self.data.swap(pos - 1, pos / 2 - 1);
             pos /= 2;
         }
     }
 
     fn sink(&mut self, mut pos: usize) {
-        pos += 1;
-        let predicate = &self.predicate;
-        while pos * 2 < self.data.len() + 1 {
-            let mut next = pos * 2;
-            if next < self.data.len() && predicate(&self.data[next], &self.data[next - 1]) {
-                next += 1;
-            }
-            
-            if predicate(&self.data[pos - 1], &self.data[next - 1]) {
-                break;
-            }
-
-            self.data.swap(pos - 1, next - 1);
-            pos = next;
-        }
+        sink(&mut self.data, pos, &self.predicate)
     }
 }
 
@@ -110,42 +97,27 @@ mod test {
 
     #[test]
     fn swim() {
-        let mut h = Heap{data: vec![1, 2], predicate: gt()};
+        let mut h = Heap{data: vec![1, 2], predicate: lt()};
         h.swim(1);
         assert_eq!(h.data, vec![2, 1]);
 
-        let mut h = Heap{data: vec![1, 2, 3], predicate: gt()};
+        let mut h = Heap{data: vec![1, 2, 3], predicate: lt()};
         h.swim(2);
         assert_eq!(h.data, vec![3, 2, 1]);
 
-        let mut h = Heap{data: vec![80, 20, 30, 40, 50, 60, 70], predicate: gt()};
+        let mut h = Heap{data: vec![80, 20, 30, 40, 50, 60, 70], predicate: lt()};
         h.swim(6);
         assert_eq!(h.data, vec![80, 20, 70, 40, 50, 60, 30]);
     }
 
     #[test]
-    fn sink() {
-        let mut h = Heap{data: vec![1, 2], predicate: gt()};
-        h.sink(0);
-        assert_eq!(h.data, vec![2, 1]);
-
-        let mut h = Heap{data: vec![1, 2, 3], predicate: gt()};
-        h.sink(0);
-        assert_eq!(h.data, vec![3, 2, 1]);
-
-        let mut h = Heap{data: vec![10, 20, 30, 40, 50, 60, 70], predicate: gt()};
-        h.sink(0);
-        assert_eq!(h.data, vec![30, 20, 70, 40, 50, 60, 10]);
-    }
-
-    #[test]
     fn remove() {
-        let mut h = Heap{data: vec![80, 79, 70, 78, 77, 60, 30, 76], predicate: gt()};
+        let mut h = Heap{data: vec![80, 79, 70, 78, 77, 60, 30, 76], predicate: lt()};
         let res = h.remove(2);
         assert_eq!(res, 70);
         assert_eq!(h.data, vec![80, 79, 76, 78, 77, 60, 30]);
 
-        let mut h = Heap{data: vec![80, 79, 70, 78, 77, 60, 30, 20], predicate: gt()};
+        let mut h = Heap{data: vec![80, 79, 70, 78, 77, 60, 30, 20], predicate: lt()};
         let res = h.remove(2);
         assert_eq!(res, 70);
         assert_eq!(h.data, vec![80, 79, 60, 78, 77, 20, 30]);
@@ -158,11 +130,10 @@ mod test {
         h.push(20);
         h.push(30);
         assert_eq!(h.data, vec![30, 10, 20]);
-        let mut last = h.pop().unwrap();
-        while let Some(x) = h.pop() {
-            assert!(last > x);
-            last = x;
-        }
+        assert_eq!(h.pop(), Some(30));
+        assert_eq!(h.pop(), Some(20));
+        assert_eq!(h.pop(), Some(10));
+        assert_eq!(h.pop(), None);
     }
 
     #[test]
