@@ -127,7 +127,6 @@ pub fn heapsort<T: fmt::Debug, F: Fn(&T, &T) -> bool>(data: &mut [T], less: F) {
         sink(data, i, &less);
     }
 
-    dbg!(&data);
     for i in (1 .. data.len()).rev() {
         data.swap(0, i);
         sink(&mut data[..i], 0, &less);
