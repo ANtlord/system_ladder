@@ -9,7 +9,7 @@ pub struct Node<T> {
 impl<T> Node<T> {
     pub fn new(value: T) -> Self {
         Self {
-            value: value,
+            value,
             //parent: parent,
             children: vec![],
         }

@@ -25,12 +25,13 @@ use std::ffi;
 use std::cell::Cell;
 use std::marker;
 use std::pin::Pin;
+
+use std::time;
 use std::env::args;
 use std::os::unix::fs::MetadataExt;
 use std::process::exit;
 use std::path;
 use std::thread;
-use std::time;
 use std::io::Read;
 use std::io::Write;
 use std::error::Error;
@@ -120,6 +121,7 @@ unsafe fn process_permissions() {
     libc::getresuid(&mut uid, &mut euid, &mut suid); 
     println!("real = {}, effective_user_id = {}, saved_user_id = {}", uid, euid, suid);
 }
+
 #[derive(Debug)]
 enum ReadErr {
     ClientClosedConnection,
@@ -218,6 +220,16 @@ fn tcp_server() -> Result<(), Box<dyn Error>> {
         evloop.run()?;
     }
     Ok(())
+}
+
+
+fn random() -> u32 {
+    let v = time::SystemTime::now().duration_since(time::UNIX_EPOCH)
+        .unwrap().as_nanos() as u32;
+    let mut random = v;
+    random ^= random << 13;
+    random ^= random >> 17;
+    random << 5
 }
 
 fn main() {

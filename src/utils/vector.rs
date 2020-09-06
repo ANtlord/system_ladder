@@ -38,6 +38,26 @@ where
     }
 }
 
+/// Swaps nth element and its child (2nth or 2nth + 1 element) as long as an element and its child
+/// satisfy `predicate`. nth elements and 2nth + 1 element are swapped if 2nth + 1 and 2nth
+/// elements satisfies the same `predicate` otherwise nth and 2nth elements are swapped.
+pub fn sink<T>(data: &mut [T], mut pos: usize, predicate: impl Fn(&T, &T) -> bool) {
+    pos += 1;
+    while pos * 2 < data.len() + 1 {
+        let mut next = pos * 2;
+        if next < data.len() && predicate(&data[next - 1], &data[next]) {
+            next += 1;
+        }
+
+        if !predicate(&data[pos - 1], &data[next - 1]) {
+            break;
+        }
+
+        data.swap(pos - 1, next - 1);
+        pos = next;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,4 +83,24 @@ mod tests {
         assert_eq!(since.unwrap(), 2);
         assert_eq!(numbers[since.unwrap()..], [0, 0, 0, 0, 0]);
     }
+
+    fn lt(a: &u32, b: &u32) -> bool {
+        a < b
+    }
+
+    #[test]
+    fn test_sink() {
+        let mut data = vec![1, 2];
+        sink(&mut data, 0, lt);
+        assert_eq!(data, vec![2, 1]);
+
+        let mut data = vec![1, 2, 3];
+        sink(&mut data, 0, lt);
+        assert_eq!(data, vec![3, 2, 1]);
+
+        let mut data = vec![10, 20, 30, 40, 50, 60, 70];
+        sink(&mut data, 0, lt);
+        assert_eq!(data, vec![30, 20, 70, 40, 50, 60, 10]);
+    }
+
 }

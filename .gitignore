@@ -7,3 +7,4 @@ main
 *.o
 main.rs
 .nvimrc
+.idea
