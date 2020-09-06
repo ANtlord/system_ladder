@@ -3,6 +3,7 @@ pub mod vector;
 use std::mem;
 use std::ptr;
 use std::fmt;
+use vector::sink;
 
 
 fn gcd(mut left: u64, mut right: u64) -> u64 {
@@ -50,12 +51,16 @@ fn actual_quicksort<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: &F) {
         }
     }
 
-    // myslice.swap(i, last);
     actual_quicksort(&mut myslice[0 .. lt], less);
     actual_quicksort(&mut myslice[gt + 1 .. len], less);
 }
 
 pub fn _merge<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: &F) {
+    if myslice.len() < 20 {
+        insertionsort(myslice, less);
+        return;
+    }
+
     let mid = myslice.len() / 2;
     let mut buf = Vec::with_capacity(mid);
     let mut myslice_ptr = myslice.as_mut_ptr();
@@ -87,16 +92,7 @@ pub fn _merge<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: &F) {
         unsafe {
             ptr::copy_nonoverlapping(bufptr.add(left_cursor), myslice_ptr.add(i), mid - left_cursor);
         }
-
-        // i += 1;
-        // left_cursor += 1;
     }
-
-    // while right_cursor < myslice.len() {
-    //     myslice.swap(i, right_cursor);
-    //     i += 1;
-    //     right_cursor += 1;
-    // }
 
     unsafe {
         // TODO: to prevent drops of T. Find a better way.
@@ -124,6 +120,17 @@ pub fn mergesort<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: F) {
 // TODO: shuffling to guarantee performance.
 pub fn quicksort<T, F: Fn(&T, &T) -> bool>(myslice: &mut [T], less: F) {
     actual_quicksort(myslice, &less);
+}
+
+pub fn heapsort<T: fmt::Debug, F: Fn(&T, &T) -> bool>(data: &mut [T], less: F) {
+    for i in (0 ..= data.len() / 2).rev() {
+        sink(data, i, &less);
+    }
+
+    for i in (1 .. data.len()).rev() {
+        data.swap(0, i);
+        sink(&mut data[..i], 0, &less);
+    }
 }
 
 #[cfg(test)]
@@ -278,8 +285,8 @@ mod tests {
             assert_eq!(v, vec![0, 1, 2 ,4, 4, 7, 7, 8]);
         }
 
-        struct Droplet(i32, *mut u32);
-        impl Drop for Droplet {
+        struct DropCount(i32, *mut u32);
+        impl Drop for DropCount {
             fn drop(&mut self) {
                 unsafe {
                     (*self.1) += 1;
@@ -291,15 +298,15 @@ mod tests {
         fn no_drops() {
             let mut drop_count = 0u32;
             let mut v = vec![
-                Droplet(20, &mut drop_count as *mut _),
-                Droplet(80, &mut drop_count as *mut _),
-                Droplet(30, &mut drop_count as *mut _),
-                Droplet(40, &mut drop_count as *mut _),
-                Droplet(10, &mut drop_count as *mut _),
-                Droplet(60, &mut drop_count as *mut _),
-                Droplet(90, &mut drop_count as *mut _),
-                Droplet(70, &mut drop_count as *mut _),
-                Droplet(50, &mut drop_count as *mut _),
+                DropCount(20, &mut drop_count as *mut _),
+                DropCount(80, &mut drop_count as *mut _),
+                DropCount(30, &mut drop_count as *mut _),
+                DropCount(40, &mut drop_count as *mut _),
+                DropCount(10, &mut drop_count as *mut _),
+                DropCount(60, &mut drop_count as *mut _),
+                DropCount(90, &mut drop_count as *mut _),
+                DropCount(70, &mut drop_count as *mut _),
+                DropCount(50, &mut drop_count as *mut _),
             ];
 
             mergesort(&mut v, |x, y| x.0 < y.0);
@@ -325,6 +332,45 @@ mod tests {
         #[test]
         fn random_100() {
             must_sorted(mergesort_random_set(100));
+        }
+    }
+
+    mod heap {
+        use super::*;
+
+        fn heapsort_random_set(count: usize) -> Vec<u32> {
+            let mut ret: Vec<u32> = vec![0; count].into_iter().map(|_| random()).collect();
+            heapsort(&mut ret, |x, y| x < y);
+            ret
+        }
+
+        #[test]
+        fn odd_reverse_sorted_elements() {
+            let mut v = vec![3,2,1];
+            heapsort(&mut v, |a, b| a < b);
+            assert_eq!(v, vec![1,2,3]);
+        }
+
+        #[test]
+        fn even_reverse_sorted_elements() {
+            let mut v = vec![4,3,2,1];
+            heapsort(&mut v, |x, y| x < y);
+            assert_eq!(v, vec![1,2,3,4]);
+        }
+
+        #[test]
+        fn random_5000() {
+            must_sorted(heapsort_random_set(5000));
+        }
+
+        #[test]
+        fn random_1000() {
+            must_sorted(heapsort_random_set(1000));
+        }
+
+        #[test]
+        fn random_100() {
+            must_sorted(heapsort_random_set(100));
         }
     }
 }

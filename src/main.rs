@@ -41,18 +41,19 @@ impl<T> Exit<T> for Option<T> {
 }
 
 fn random() -> u32 {
-    let v = time::SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_nanos() as u64;
-    let mut random = v as u32;
+    let v = time::SystemTime::now().duration_since(time::UNIX_EPOCH)
+        .unwrap().as_nanos() as u32;
+    let mut random = v;
     random ^= random << 13;
     random ^= random >> 17;
-    random ^= random << 5;
-    random
+    random << 5
 }
 
+
+
 fn main() {
-    for i in 0 .. 100 {
-        println!("{}", random());
-    }
+    let ret: Vec<u32> = vec![0; 3].into_iter().map(|_| random()).collect();
+    println!("{:?}", ret);
     // let filename = args().skip(1).next().or_exit("Point filename");
     // println!("{}", filename);
     // let filename = args().skip(1).next().expect("Point filename");
