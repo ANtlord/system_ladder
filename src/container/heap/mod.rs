@@ -1,21 +1,22 @@
 use std::ptr::NonNull;
 use crate::utils::vector::sink;
 
-pub struct Heap<T> {
+pub struct Heap<T, F> {
     data: Vec<T>,
-    predicate: Box<dyn Fn(&T, &T) -> bool>,
+    predicate: F,
 }
 
-// max oriented heap
-impl<T: Ord> Heap<T> {
+impl<T: Ord> Heap<T, fn(&T, &T) -> bool> {
     fn max() -> Self {
-        Self{data: Vec::new(), predicate: Box::new(|a, b| a < b)}
+        Self{data: Vec::new(), predicate: |a, b| a < b}
     }
 
     fn min() -> Self {
-        Self{data: Vec::new(), predicate: Box::new(|a, b| a > b)}
+        Self{data: Vec::new(), predicate: |a, b| a > b}
     }
+}
 
+impl<T: Ord, F: Fn(&T, &T) -> bool> Heap<T, F> {
     fn push(&mut self, value: T) {
         self.data.push(value);
         self.swim(self.data.len() - 1);
@@ -151,8 +152,8 @@ mod test {
     }
 
     struct DynamicMedian {
-        lt: Heap<u16>,
-        gt: Heap<u16>,
+        lt: Heap<u16, fn(&u16, &u16) -> bool>,
+        gt: Heap<u16, fn(&u16, &u16) -> bool>,
     }
 
     impl DynamicMedian {
