@@ -40,6 +40,15 @@ where
     }
 }
 
+/// swim...
+pub fn swim<T>(data: &mut [T], mut pos: usize, predicate: impl Fn(&T, &T) -> bool) {
+    pos += 1;
+    while pos > 1 && predicate(&data[pos / 2 - 1], &data[pos - 1]) {
+        data.swap(pos - 1, pos / 2 - 1);
+        pos /= 2;
+    }
+}
+
 /// Swaps nth element and its child (2nth or 2nth + 1 element) as long as an element and its child
 /// satisfy `predicate`. nth elements and 2nth + 1 element are swapped if 2nth + 1 and 2nth
 /// elements satisfies the same `predicate` otherwise nth and 2nth elements are swapped.

@@ -16,7 +16,7 @@ static FTW_PHYS: Flag = 16;
 
 const DEFALT_NFTW: NftwResult = Ok(CallbackResult::Continue);
 
-type Func = Fn(&io::Result<fs::Metadata>, &TypeFlag, &Ftw) -> NftwResult;
+type Func = dyn Fn(&io::Result<fs::Metadata>, &TypeFlag, &Ftw) -> NftwResult;
 type NftwResult = Result<CallbackResult, NftwErr>;
 type Flag = u8;
 
