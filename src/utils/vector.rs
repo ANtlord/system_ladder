@@ -40,12 +40,63 @@ where
     }
 }
 
+pub trait Predicate<T> {
+    fn predicate(&self, _: &T, _: &T) -> bool;
+}
+
+pub trait Swim<T>: Predicate<T> {
+    fn swap(&self, data: &mut [T], from: usize, to: usize) {
+        data.swap(from, to);
+    }
+
+    fn swim(&self, data: &mut [T], mut pos: usize) {
+        pos += 1;
+        while pos > 1 && self.predicate(&data[pos / 2 - 1], &data[pos - 1]) {
+            self.swap(data, pos - 1, pos / 2 - 1);
+            pos /= 2;
+        }
+    }
+}
+
+pub struct SwimSink<P>(pub P);
+
+impl<T, P: Fn(&T, &T) -> bool> Sink<T> for SwimSink<P>{}
+
+impl<T, P: Fn(&T, &T) -> bool> Swim<T> for SwimSink<P>{}
+
+impl<T, P: Fn(&T, &T) -> bool> Predicate<T> for SwimSink<P> {
+    fn predicate(&self, left: &T, right: &T) -> bool {
+        (self.0)(left, right)
+    }
+}
+
+
 /// swim...
 pub fn swim<T>(data: &mut [T], mut pos: usize, predicate: impl Fn(&T, &T) -> bool) {
-    pos += 1;
-    while pos > 1 && predicate(&data[pos / 2 - 1], &data[pos - 1]) {
-        data.swap(pos - 1, pos / 2 - 1);
-        pos /= 2;
+    let sw = SwimSink(predicate);
+    sw.swim(data, pos);
+}
+
+pub trait Sink<T>: Predicate<T> {
+    fn swap(&self, data: &mut [T], from: usize, to: usize) {
+        data.swap(from, to);
+    }
+
+    fn sink(&self, data: &mut [T], mut pos: usize) {
+        pos += 1;
+        while pos * 2 < data.len() + 1 {
+            let mut next = pos * 2;
+            if next < data.len() && self.predicate(&data[next - 1], &data[next]) {
+                next += 1;
+            }
+
+            if !self.predicate(&data[pos - 1], &data[next - 1]) {
+                break;
+            }
+
+            data.swap(pos - 1, next - 1);
+            pos = next;
+        }
     }
 }
 
@@ -53,20 +104,8 @@ pub fn swim<T>(data: &mut [T], mut pos: usize, predicate: impl Fn(&T, &T) -> boo
 /// satisfy `predicate`. nth elements and 2nth + 1 element are swapped if 2nth + 1 and 2nth
 /// elements satisfies the same `predicate` otherwise nth and 2nth elements are swapped.
 pub fn sink<T>(data: &mut [T], mut pos: usize, predicate: impl Fn(&T, &T) -> bool) {
-    pos += 1;
-    while pos * 2 < data.len() + 1 {
-        let mut next = pos * 2;
-        if next < data.len() && predicate(&data[next - 1], &data[next]) {
-            next += 1;
-        }
-
-        if !predicate(&data[pos - 1], &data[next - 1]) {
-            break;
-        }
-
-        data.swap(pos - 1, next - 1);
-        pos = next;
-    }
+    let sw = SwimSink(predicate);
+    sw.sink(data, pos);
 }
 
 #[cfg(test)]
@@ -114,4 +153,18 @@ mod tests {
         assert_eq!(data, vec![30, 20, 70, 40, 50, 60, 10]);
     }
 
+    #[test]
+    fn test_swim() {
+        let mut ve = vec![1, 2];
+        swim(&mut ve, 1, lt);
+        assert_eq!(ve, vec![2, 1]);
+
+        let mut ve = vec![1, 2, 3];
+        swim(&mut ve, 2, lt);
+        assert_eq!(ve, vec![3, 2, 1]);
+
+        let mut ve = vec![80, 20, 30, 40, 50, 60, 70];
+        swim(&mut ve, 6, lt);
+        assert_eq!(ve, vec![80, 20, 70, 40, 50, 60, 30]);
+    }
 }
