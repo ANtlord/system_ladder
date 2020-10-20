@@ -10,11 +10,13 @@ mod utils;
 mod tree;
 mod fs;
 mod container;
+mod random;
 
 use std::time;
 use std::env::args;
 use std::process::exit;
 use std::os::unix::fs::MetadataExt;
+use crate::random::xorshift_rng as random;
 
 trait Exit<T> {
     fn or_exit(self, msg: &str) -> T;
@@ -39,17 +41,6 @@ impl<T> Exit<T> for Option<T> {
         exit(1);
     }
 }
-
-fn random() -> u32 {
-    let v = time::SystemTime::now().duration_since(time::UNIX_EPOCH)
-        .unwrap().as_nanos() as u32;
-    let mut random = v;
-    random ^= random << 13;
-    random ^= random >> 17;
-    random << 5
-}
-
-
 
 fn main() {
     let ret: Vec<u32> = vec![0; 3].into_iter().map(|_| random()).collect();

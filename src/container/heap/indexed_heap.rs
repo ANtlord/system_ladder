@@ -6,10 +6,6 @@ use crate::utils::vector::Predicate;
 use crate::container::rbtree::Tree;
 use super::FnBox;
 
-pub struct IndexedHeap<T, SW> {
-    heap: Heap<T, SW>,
-}
-
 struct SwimSink<P, C>(P, C);
 
 impl<T, P: Fn(&T, &T) -> bool, C: Fn(usize, usize)> Sink<T> for SwimSink<P, C>{
@@ -25,6 +21,14 @@ impl<T, P: Fn(&T, &T) -> bool, C: Fn(usize, usize)> Predicate<T> for SwimSink<P,
     fn predicate(&self, left: &T, right: &T) -> bool {
         (self.0)(left, right)
     }
+}
+
+pub struct IndexedHeap<T, SW> {
+    heap: Heap<T, SW>,
+    // index: Vec<usize>, point to a place in the `heap`
+    // keys: Vec<usize>, point to a place in the `index`
+    // Idea is finding a corresponding index in `index` through keys as keys provides index by
+    // place in the heap
 }
 
 impl<T> IndexedHeap<T, SwimSink<FnBox<T>, Box<dyn Fn(usize, usize)>>> {

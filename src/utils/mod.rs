@@ -4,6 +4,7 @@ use std::mem;
 use std::ptr;
 use std::fmt;
 use vector::sink;
+use crate::random::xorshift_rng as random;
 
 
 fn gcd(mut left: u64, mut right: u64) -> u64 {
@@ -137,16 +138,6 @@ pub fn heapsort<T: fmt::Debug, F: Fn(&T, &T) -> bool>(data: &mut [T], less: F) {
 mod tests {
     use super::*;
     use std::time;
-
-    fn random() -> u32 {
-        let v = time::SystemTime::now().duration_since(time::UNIX_EPOCH)
-            .unwrap().as_nanos() as u32;
-        let mut random = v;
-        random ^= random << 13;
-        random ^= random >> 17;
-        random << 5
-    }
-
 
     fn must_sorted(v: Vec<u32>) {
         let res = v.iter().enumerate().skip(1).find(|(i, e)| e < &&v[i - 1]);
