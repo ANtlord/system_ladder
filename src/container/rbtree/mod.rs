@@ -1,9 +1,11 @@
 mod node;
 
 use std::cmp::Ord;
+use std::cmp::Ordering;
 use std::fmt;
 use std::mem;
 use std::ptr::NonNull;
+use std::collections::BTreeMap;
 
 use self::node::Node;
 use self::node::NodePtr;
@@ -13,11 +15,11 @@ use self::node::NodePtr;
 // memory.
 // TODO: modify it to left leaning red-black tree
 // http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.139.282&rep=rep1&type=pdf
-pub struct Tree<T> {
-    root: NodePtr<T>,
+pub struct Tree<T, P> {
+    root: NodePtr<T, P>,
 }
 
-impl<T: Ord> Tree<T> {
+impl<T: Ord, P> Tree<T, P> {
     fn allocate(&self, value: T) -> NonNull<T> {
         unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(value))) }
     }
@@ -26,10 +28,10 @@ impl<T: Ord> Tree<T> {
         unsafe { Box::from_raw(value.as_ptr()); }
     }
 
-    fn add(&mut self, value: T) {
+    fn insert(&mut self, key: T, value: P) {
         match self.root {
             Some(mut x) => unsafe {
-                let node = x.as_mut().add(self.allocate(value));
+                let node = x.as_mut().add(self.allocate(key), value);
                 node::repair(node);
                 dbg!(node);
                 let mut parent = node.as_ref().parent;
@@ -38,11 +40,11 @@ impl<T: Ord> Tree<T> {
                     parent = p.as_ref().parent;
                 }
             },
-            None => self.root = Some(Node::head(self.allocate(value))),
+            None => self.root = Some(Node::head(self.allocate(key), value)),
         }
     }
 
-    fn find(&self, value: &T) -> NodePtr<T> {
+    fn find(&self, value: &T) -> NodePtr<T, P> {
         let mut node = self.root;
         while let Some(current) = node {
             let current_val = unsafe { current.as_ref().value.as_ref() };
@@ -82,11 +84,46 @@ impl<T: Ord> Tree<T> {
     }
 }
 
-impl<T: Ord> Default for Tree<T> {
+impl<T: Ord, P> Default for Tree<T, P> {
     fn default() -> Self {
         Self { root: None }
     }
 }
+
+
+// struct Pair<K,V>(K, V);
+// 
+// impl<K: Ord, V> PartialEq for Pair<K, V> {
+//     fn eq(&self, other: &Pair<K,V>) -> bool {
+//         self.0 == other.0
+//     }
+// }
+// 
+// impl<K: Ord, V> PartialOrd for Pair<K, V> {
+//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+//         Some(self.0.cmp(&other.0))
+//     }
+// }
+// 
+// impl<K: Ord, V> Eq for Pair<K, V> {}
+// impl<K: Ord, V> Ord for Pair<K, V> {
+//     fn cmp(&self, other: &Self) -> Ordering {
+//         self.0.cmp(&other.0)
+//     }
+// }
+// 
+// struct TreeMap<K, V>(Tree<Pair<K, V>>);
+// 
+// impl<K: Ord, V> TreeMap<K, V> {
+//     fn insert(&mut self, key: K, value: V) {
+//         self.0.add(Pair(key, value))
+//     }
+// 
+//     // fn get(&self, key: &K) -> Option<&V> {
+//     //     self.0.find(key);
+//     //     None
+//     // }
+// }
 
 #[cfg(test)]
 mod tests {
