@@ -63,13 +63,14 @@ fn to_heap<T>(val: T) -> NonNull<T> {
 
 impl<T: Ord, P> Node<T, P> {
     pub unsafe fn add(&mut self, val: NonNull<T>, payload: P) -> NonNull<Self> {
-        let mut parent = NonNull::new_unchecked(self);
-        let mut node_opt = Some(parent);
+        let mut ret = NonNull::new_unchecked(self);
+        let mut node_opt = Some(ret);
         while let Some(mut node) = node_opt.take() {
             let mut child_node = if val.as_ref() < node.as_ref().value.as_ref() {
                 if node.as_mut().left.is_none() {
                     let new = Self::red(val, node, payload);
                     node.as_mut().left.replace(new);
+                    ret = new;
                     break;
                 }
 
@@ -78,19 +79,21 @@ impl<T: Ord, P> Node<T, P> {
                 if node.as_mut().right.is_none() {
                     let new = Self::red(val, node, payload);
                     node.as_mut().right.replace(new);
+                    ret = new;
                     break;
                 }
 
                 node.as_mut().right
             } else {
                 node.as_mut().payload = payload;
+                ret = node;
                 break
             };
 
             node_opt = child_node;
         };
 
-        parent
+        ret
     }
 
 }

@@ -127,8 +127,11 @@ impl<T: Ord, P> Default for Tree<T, P> {
 
 #[cfg(test)]
 mod tests {
+    use super::Node as BaseNode;
     use super::*;
     use std::cell::RefCell;
+
+    type Node<T> = BaseNode<T, ()>;
 
     trait Visitor<'a, T> {
         fn every(&self, _: &'a Node<T>) {}
@@ -207,10 +210,10 @@ mod tests {
         }
     }
 
-    fn make_tree(count: u8) -> Tree<u8> {
+    fn make_tree(count: u8) -> Tree<u8, ()> {
         let mut tree = Tree::default();
         for i in 0..count {
-            tree.add(i);
+            tree.insert(i, ());
         }
         tree
     }
