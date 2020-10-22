@@ -15,6 +15,7 @@ use self::node::NodePtr;
 // memory.
 // TODO: modify it to left leaning red-black tree
 // http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.139.282&rep=rep1&type=pdf
+// TODO: implement Drop
 pub struct Tree<T, P> {
     root: NodePtr<T, P>,
 }
@@ -44,6 +45,13 @@ impl<T: Ord, P> Tree<T, P> {
         }
     }
 
+    fn get(&self, value: &T) -> Option<&P> {
+        let node = self.find(value)?;
+        unsafe {
+            Some(&(*(&node.as_ref().payload as *const _)))
+        }
+    }
+
     fn find(&self, value: &T) -> NodePtr<T, P> {
         let mut node = self.root;
         while let Some(current) = node {
@@ -60,27 +68,27 @@ impl<T: Ord, P> Tree<T, P> {
         node
     }
 
-    fn del(&mut self, value: &T) {
-        let root = self.root;
-        if root.is_none() {
-            return;
+    unsafe fn drop_node(&mut self, mut node_ptr: NonNull<Node<T, P>>) -> P {
+        let node_ptr = node_ptr.as_mut().del();
+        self.unallocate(node_ptr.as_ref().value);
+        let node = *Box::from_raw(node_ptr.as_ptr());
+        return node.payload;
+    }
+
+    fn del(&mut self, value: &T) -> Option<P> {
+        let mut root_ptr = self.root.take()?;
+        unsafe {
+            if root_ptr.as_ref().left.or(root_ptr.as_ref().right).is_none() {
+                return Some(self.drop_node(root_ptr));
+            }
         }
 
-        let mut root = root.unwrap();
-        let root_ref = unsafe { root.as_mut() };
-        let mut node = match self.find(value) {
-            Some(x) => x,
-            None => return,
-        };
-
-        if root_ref.left.or(root_ref.right).is_none() {
-            let val = unsafe { root_ref.del() };
-            self.unallocate(val);
-            self.root = None;
+        self.root = Some(root_ptr);
+        if let Some(mut x) = self.find(value) {
+            return Some(unsafe {self.drop_node(x)});
         }
 
-        let val = unsafe { node.as_mut().del() };
-        self.unallocate(val);
+        return None;
     }
 }
 
@@ -89,41 +97,6 @@ impl<T: Ord, P> Default for Tree<T, P> {
         Self { root: None }
     }
 }
-
-
-// struct Pair<K,V>(K, V);
-// 
-// impl<K: Ord, V> PartialEq for Pair<K, V> {
-//     fn eq(&self, other: &Pair<K,V>) -> bool {
-//         self.0 == other.0
-//     }
-// }
-// 
-// impl<K: Ord, V> PartialOrd for Pair<K, V> {
-//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-//         Some(self.0.cmp(&other.0))
-//     }
-// }
-// 
-// impl<K: Ord, V> Eq for Pair<K, V> {}
-// impl<K: Ord, V> Ord for Pair<K, V> {
-//     fn cmp(&self, other: &Self) -> Ordering {
-//         self.0.cmp(&other.0)
-//     }
-// }
-// 
-// struct TreeMap<K, V>(Tree<Pair<K, V>>);
-// 
-// impl<K: Ord, V> TreeMap<K, V> {
-//     fn insert(&mut self, key: K, value: V) {
-//         self.0.add(Pair(key, value))
-//     }
-// 
-//     // fn get(&self, key: &K) -> Option<&V> {
-//     //     self.0.find(key);
-//     //     None
-//     // }
-// }
 
 #[cfg(test)]
 mod tests {
@@ -288,25 +261,78 @@ mod tests {
         }
     }
 
-    #[test]
-    fn delete() {
-        //     __b3__
-        //    /      \
-        //   b1       b5
-        //  / \      /  \
-        // b0  b2   b4  r7
-        //             /  \
-        //            b6   b8
-        //                   \
-        //                   r9
-        let mut tree = make_tree(10);
-        let red_node_collector: RedCollector<u8> = RedCollector::new();
-        for node in red_node_collector.data.borrow().iter() {
-            let val = unsafe { node.value.as_ref() };
-            assert!([7, 9].contains(val), "unexpected value {}", val);
+    mod delete {
+        use super::*;
+        use std::rc::Rc;
+        use crate::random::xorshift_rng as random;
+
+        struct Model {
+            id: usize,
+            drop_indicators: Rc<RefCell<Vec<bool>>>,
         }
 
+        impl Drop for Model {
+            fn drop(&mut self) {
+                self.drop_indicators.borrow_mut()[self.id] = true;
+            }
+        }
 
+        fn make_tree(drop_indicators: Rc<RefCell<Vec<bool>>>) -> Tree<usize, Model> {
+            let mut tree = Tree::default();
+            for i in 0..10 {
+                tree.insert(i, Model{
+                    id: i,
+                    drop_indicators: drop_indicators.clone(),
+                });
+            }
 
+            tree
+        }
+
+        #[test]
+        fn basic() {
+            //     __b3__
+            //    /      \
+            //   b1       b5
+            //  / \      /  \
+            // b0  b2   b4  r7
+            //             /  \
+            //            b6   b8
+            //                   \
+            //                   r9
+            let mut drop_indicators = Rc::new(RefCell::new(vec![false; 10]));
+            let mut tree = make_tree(drop_indicators.clone());
+            let red_node_collector: RedCollector<u8> = RedCollector::new();
+            for node in red_node_collector.data.borrow().iter() {
+                let val = unsafe { node.value.as_ref() };
+                assert!([7, 9].contains(val), "unexpected value {}", val);
+            }
+
+            let node = tree.find(&3).unwrap();
+            let root = tree.root.unwrap();
+            assert_eq!(node, root);
+            drop(tree.del(&3));
+            dbg!(&drop_indicators);
+            let drop_indicators = drop_indicators.borrow();
+            assert!(!drop_indicators[..3].iter().fold(true, |x, y| x && *y));
+            assert!(drop_indicators[3]);
+            assert!(!drop_indicators[4..].iter().fold(true, |x, y| x && *y));
+            assert!(tree.get(&3).is_none());
+        }
+
+        #[test]
+        fn last_node() {
+            let count = random() as usize % 1000;
+            let count = 1;
+            let mut drop_indicators = Rc::new(RefCell::new(vec![false; count]));
+            let mut tree = make_tree(drop_indicators.clone());
+            tree.del(&0);
+
+            // for i in 0 .. 1000 {
+            //     let model = tree.del(&i);
+            //     // assert_eq!(model.map(|m| m.id), Some(i));
+            //     // assert!(drop_indicators.borrow()[i]);
+            // }
+        }
     }
 }

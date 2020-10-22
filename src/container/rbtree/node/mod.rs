@@ -61,6 +61,11 @@ fn to_heap<T>(val: T) -> NonNull<T> {
     unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(val))) }
 }
 
+enum State<T, P> {
+    Keep(NonNull<Node<T, P>>),
+    Stop(NonNull<Node<T, P>>),
+}
+
 impl<T: Ord, P> Node<T, P> {
     pub unsafe fn add(&mut self, val: NonNull<T>, payload: P) -> NonNull<Self> {
         let mut ret = NonNull::new_unchecked(self);
@@ -147,26 +152,6 @@ impl<T, P> Node<T, P> {
     unsafe fn uncle(&self) -> NodePtr<T, P> {
         self.parent?.as_ref().sibling()
     }
-
-    // unsafe fn try_set_leg(
-    //     parent: &mut NonNull<Self>,
-    //     child_ptr: &mut NodePtr<T, P>,
-    //     value: NonNull<T>,
-    //     payload: P,
-    // ) -> Option<NonNull<T>> {
-    //     match child_ptr {
-    //         Some(ref mut x) => {
-    //             *parent = NonNull::new_unchecked(x.as_mut());
-    //             Some(value)
-    //         }
-    //         None => {
-    //             let new = Self::red(value, *parent, payload);
-    //             child_ptr.replace(new);
-    //             *parent = new;
-    //             None
-    //         }
-    //     }
-    // }
 
     //   ancestor
     //    \
@@ -296,7 +281,7 @@ impl<T, P> Node<T, P> {
     // case 4: self is internal node and it has only right child (because case 2) the child is
     // the replacement and a leaf (because of case 2) -> so self can be replaced by the child
     // without caring of its children
-    unsafe fn del_step(&mut self) -> NodePtr<T, P> {
+    unsafe fn del_step(&mut self) -> State<T, P> {
         let replacement = self.find_replacement();
         if replacement.is_none() {
             if self.color.is_black() {
@@ -306,22 +291,24 @@ impl<T, P> Node<T, P> {
             }
 
             self.unlink_parent();
-            unallocate(NonNull::new_unchecked(self as *mut _));
-            return None;
+            // unallocate(NonNull::new_unchecked(self as *mut _));
+            return State::Stop(NonNull::new_unchecked(self as *mut _));
         }
 
         let mut replacement = replacement.unwrap();
         if self.left.and(self.right).is_some() {
             self.value = replacement.as_ref().value;
-            return Some(replacement);
+            mem::swap(&mut self.payload, &mut replacement.as_mut().payload);
+            return State::Keep(replacement);
         }
 
         if self.parent.is_none() {
             self.value = replacement.as_ref().value;
+            mem::swap(&mut self.payload, &mut replacement.as_mut().payload);
             self.left = None;
             self.right = None;
-            unallocate(replacement);
-            return None;
+            // unallocate(replacement);
+            return State::Stop(replacement);
         }
 
         let mut parent = self.parent;
@@ -337,22 +324,24 @@ impl<T, P> Node<T, P> {
             replacement.as_mut().color = Color::Black;
         }
 
-        unallocate(NonNull::new_unchecked(self as *mut _));
-        return None;
+        // unallocate(NonNull::new_unchecked(self as *mut _));
+        return State::Stop(NonNull::new_unchecked(self as *mut _));
     }
 
     // Note 1: should return head for a tree and a value for a resouce allocator.
     // Note 2: maximum number of iterations is 2. It's only one for a leaf or for a node with one
     // child. 2 iterations for a node which has 2 children. In this case the node is replaced by
     // the node which is most left child (has minimum value) in its left subtree.
-    pub unsafe fn del(&mut self) -> NonNull<T> {
-        let mut ptr = node_ptr(self);
-        let ret = self.value;
-        while let Some(mut node) = ptr {
-            ptr = node.as_mut().del_step();
+    pub unsafe fn del(&mut self) -> NonNull<Node<T, P>> {
+        let mut ptr = State::Keep(NonNull::new_unchecked(self as *mut _));
+        // let ret = self.value;
+        // let payload = self.payload;
+        loop {
+            match ptr {
+                State::Keep(mut node) => ptr = node.as_mut().del_step(),
+                State::Stop(node) => return node,
+            }
         }
-
-        ret
     }
 
     unsafe fn fix_double_black_step(&mut self) -> NodePtr<T, P> {

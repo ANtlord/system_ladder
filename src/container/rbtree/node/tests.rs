@@ -22,6 +22,27 @@ unsafe fn make_branch(h: u8, c: u8, g: u8) -> Branch {
     (head, child, grandchild)
 }
 
+fn is_state_keep<T, P>(state: &State<T, P>, value: NonNull<BaseNode<T, P>>) -> bool {
+    match state {
+        State::Keep(x) => x == &value,
+        _ => false,
+    }
+}
+
+fn is_state_stop<T, P>(state: &State<T, P>, value: NonNull<BaseNode<T, P>>) -> bool {
+    match state {
+        State::Stop(x) => x == &value,
+        _ => false,
+    }
+}
+
+fn unwrap_keep_state<T, P>(state: State<T, P>) -> NonNull<BaseNode<T, P>> {
+    match state {
+        State::Keep(x) => x,
+        _ => panic!("state is not keep")
+    }
+}
+
 #[test]
 fn test_cmp() {
     unsafe {
@@ -372,7 +393,7 @@ fn del_step_leaf() {
     unsafe {
         let (head, parent, mut node) = make_branch(5, 6, 7);
         let res = node.as_mut().del_step();
-        assert_eq!(res, None);
+        assert!(is_state_stop(&res, node));
         assert_eq!(parent.as_ref().right, None);
         assert_eq!(parent.as_ref().left, None);
     }
@@ -381,13 +402,13 @@ fn del_step_leaf() {
 #[test]
 fn del_step_head_with_replacement() {
     // it tests case when it removes head with a child.
-    // Note: It's impossible to have a head with a grandchild. It inserts a grandchild, child
-    // rotates (look repair_straight_branch test case).
+    // Note: It's impossible to have a tree of 3 nodes where the head has a grandchild.
+    // It inserts a grandchild, child rotates (look repair_straight_branch test case).
     unsafe {
         let mut head = Node::head(to_heap(2), ());
         head.as_mut().add(to_heap(3), ());
         let res = head.as_mut().del_step();
-        assert_eq!(res, None);
+        assert!(is_state_stop(&res, head));
         assert_eq!(head.as_ref().value.as_ref(), &3);
         assert_eq!(head.as_ref().left, None);
         assert_eq!(head.as_ref().right, None);
@@ -412,6 +433,11 @@ fn del_step_internal_node_with_replacement() {
 
 #[test]
 fn del_step_head_with_replacement_and_two_children() {
+    type Node<T, P> = BaseNode<T, P>;
+    struct Model {
+        name: String
+    }
+
     // delete 2
     //   h(2)      |  h(3)
     //  /    \     |  /
@@ -420,15 +446,16 @@ fn del_step_head_with_replacement_and_two_children() {
         let head_val = to_heap(2);
         let right_val = to_heap(3);
         let left_val = to_heap(1);
-        let mut head = Node::head(head_val, ());
-        let right = head.as_mut().add(right_val, ());
-        let left = head.as_mut().add(left_val, ());
+        let mut head = Node::head(head_val, Model { name: "head".to_owned() });
+        let right = head.as_mut().add(right_val, Model { name: "right hand".to_owned() });
+        let left = head.as_mut().add(left_val, Model { name: "left hand".to_owned() });
         let res = head.as_mut().del_step();
-        assert_eq!(res, Some(right));
+        assert!(is_state_keep(&res, right));
         assert_eq!(head.as_ref().value, right_val);
+        assert_eq!(head.as_ref().payload.name, "right hand");
 
-        let res = res.unwrap().as_mut().del_step();
-        assert_eq!(res, None);
+        let res = unwrap_keep_state(res).as_mut().del_step();
+        assert!(is_state_stop(&res, right));
         assert_eq!(head.as_ref().right, None);
         assert_eq!(head.as_ref().left.unwrap().as_ref().value, left_val);
     }
@@ -615,6 +642,7 @@ mod fix_double_black {
         }
     }
 
+    #[test]
     fn black_sibling_without_red_child_and_red_parent() {
         //      p(r)    |   p(b)
         //     /    \   |  /    \
