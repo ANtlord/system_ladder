@@ -406,9 +406,9 @@ fn del_step_head_with_replacement() {
     // It inserts a grandchild, child rotates (look repair_straight_branch test case).
     unsafe {
         let mut head = Node::head(to_heap(2), ());
-        head.as_mut().add(to_heap(3), ());
+        let right = head.as_mut().add(to_heap(3), ());
         let res = head.as_mut().del_step();
-        assert!(is_state_stop(&res, head));
+        assert!(is_state_stop(&res, right));
         assert_eq!(head.as_ref().value.as_ref(), &3);
         assert_eq!(head.as_ref().left, None);
         assert_eq!(head.as_ref().right, None);
