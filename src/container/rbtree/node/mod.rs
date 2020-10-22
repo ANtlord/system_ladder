@@ -62,7 +62,7 @@ fn to_heap<T>(val: T) -> NonNull<T> {
 }
 
 enum State<T, P> {
-    Keep(NonNull<Node<T, P>>),
+    Continue(NonNull<Node<T, P>>),
     Stop(NonNull<Node<T, P>>),
 }
 
@@ -285,8 +285,10 @@ impl<T, P> Node<T, P> {
         let replacement = self.find_replacement();
         if replacement.is_none() {
             if self.color.is_black() {
+                println!("remove node with no child: fix double black");
                 self.fix_double_black()
             } else {
+                println!("remove node with no child: sibling become red");
                 self.sibling().map(|mut x| x.as_mut().color = Color::Red);
             }
 
@@ -297,13 +299,15 @@ impl<T, P> Node<T, P> {
 
         let mut replacement = replacement.unwrap();
         if self.left.and(self.right).is_some() {
-            self.value = replacement.as_ref().value;
+            mem::swap(&mut self.value, &mut replacement.as_mut().value);
+            // self.value = replacement.as_ref().value;
             mem::swap(&mut self.payload, &mut replacement.as_mut().payload);
-            return State::Keep(replacement);
+            return State::Continue(replacement);
         }
 
         if self.parent.is_none() {
-            self.value = replacement.as_ref().value;
+            mem::swap(&mut self.value, &mut replacement.as_mut().value);
+            // self.value = replacement.as_ref().value;
             mem::swap(&mut self.payload, &mut replacement.as_mut().payload);
             self.left = None;
             self.right = None;
@@ -333,12 +337,12 @@ impl<T, P> Node<T, P> {
     // child. 2 iterations for a node which has 2 children. In this case the node is replaced by
     // the node which is most left child (has minimum value) in its left subtree.
     pub unsafe fn del(&mut self) -> NonNull<Node<T, P>> {
-        let mut ptr = State::Keep(NonNull::new_unchecked(self as *mut _));
+        let mut ptr = State::Continue(NonNull::new_unchecked(self as *mut _));
         // let ret = self.value;
         // let payload = self.payload;
         loop {
             match ptr {
-                State::Keep(mut node) => ptr = node.as_mut().del_step(),
+                State::Continue(mut node) => ptr = node.as_mut().del_step(),
                 State::Stop(node) => return node,
             }
         }
@@ -455,17 +459,11 @@ impl<T, P> Node<T, P> {
     // iteration.
     unsafe fn fix_double_black(&mut self) {
         let mut node = node_ptr(self);
-        while let Some(_) = node.map(|x| x.as_ref().parent) {
+        while let Some(_) = node.and_then(|x| x.as_ref().parent) {
             node = node.unwrap().as_mut().fix_double_black_step()
         }
-
     }
 
-}
-
-// remove from data the given pointer points to.
-unsafe fn unallocate<T>(ptr: NonNull<T>) {
-    Box::from_raw(ptr.as_ptr());
 }
 
 // new is root => make it black

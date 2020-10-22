@@ -7,6 +7,10 @@ type Nodeu8 = NonNull<Node<u8>>;
 type LongBranch = (Nodeu8, Nodeu8, Nodeu8, Nodeu8);
 type Branch = (Nodeu8, Nodeu8, Nodeu8);
 
+unsafe fn add_node<T: Ord>(mut parent: NonNull<Node<T>>, value: T) -> NonNull<Node<T>>  {
+    parent.as_mut().add(to_heap(value), ())
+}
+
 unsafe fn make_long_branch(a: u8, g: u8, p: u8, l: u8) -> LongBranch {
     let mut ancestor = Node::head(to_heap(a), ());
     let mut grandparent = ancestor.as_mut().add(to_heap(g), ());
@@ -22,9 +26,9 @@ unsafe fn make_branch(h: u8, c: u8, g: u8) -> Branch {
     (head, child, grandchild)
 }
 
-fn is_state_keep<T, P>(state: &State<T, P>, value: NonNull<BaseNode<T, P>>) -> bool {
+fn is_state_continue<T, P>(state: &State<T, P>, value: NonNull<BaseNode<T, P>>) -> bool {
     match state {
-        State::Keep(x) => x == &value,
+        State::Continue(x) => x == &value,
         _ => false,
     }
 }
@@ -38,7 +42,7 @@ fn is_state_stop<T, P>(state: &State<T, P>, value: NonNull<BaseNode<T, P>>) -> b
 
 fn unwrap_keep_state<T, P>(state: State<T, P>) -> NonNull<BaseNode<T, P>> {
     match state {
-        State::Keep(x) => x,
+        State::Continue(x) => x,
         _ => panic!("state is not keep")
     }
 }
@@ -450,7 +454,7 @@ fn del_step_head_with_replacement_and_two_children() {
         let right = head.as_mut().add(right_val, Model { name: "right hand".to_owned() });
         let left = head.as_mut().add(left_val, Model { name: "left hand".to_owned() });
         let res = head.as_mut().del_step();
-        assert!(is_state_keep(&res, right));
+        assert!(is_state_continue(&res, right));
         assert_eq!(head.as_ref().value, right_val);
         assert_eq!(head.as_ref().payload.name, "right hand");
 
@@ -459,10 +463,6 @@ fn del_step_head_with_replacement_and_two_children() {
         assert_eq!(head.as_ref().right, None);
         assert_eq!(head.as_ref().left.unwrap().as_ref().value, left_val);
     }
-}
-
-unsafe fn add_node<T: Ord>(mut parent: NonNull<Node<T>>, value: T) -> NonNull<Node<T>>  {
-    parent.as_mut().add(to_heap(value), ())
 }
 
 #[test]

@@ -34,7 +34,6 @@ impl<T: Ord, P> Tree<T, P> {
             Some(mut x) => unsafe {
                 let node = x.as_mut().add(self.allocate(key), value);
                 node::repair(node);
-                dbg!(node);
                 let mut parent = node.as_ref().parent;
                 while let Some(p) = parent {
                     self.root = parent;
@@ -104,45 +103,43 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
 
-    type Node<T> = BaseNode<T, ()>;
-
-    trait Visitor<'a, T> {
-        fn every(&self, _: &'a Node<T>) {}
-        fn left(&self, _: &'a Node<T>) {}
-        fn right(&self, _: &'a Node<T>) {}
-        fn leaf(&self, _: &'a Node<T>) {}
+    trait Visitor<'a, T, P> {
+        fn every(&self, _: &'a Node<T, P>) {}
+        fn left(&self, _: &'a Node<T, P>) {}
+        fn right(&self, _: &'a Node<T, P>) {}
+        fn leaf(&self, _: &'a Node<T, P>) {}
     }
 
-    struct LeafCollector<'a, T> {
-        data: RefCell<Vec<&'a Node<T>>>,
+    struct LeafCollector<'a, T, P> {
+        data: RefCell<Vec<&'a Node<T, P>>>,
     }
 
-    impl<'a, T> LeafCollector<'a, T> {
+    impl<'a, T, P> LeafCollector<'a, T, P> {
         fn new() -> Self {
             let data = RefCell::new(vec![]);
             Self { data }
         }
     }
 
-    impl<'a, T> Visitor<'a, T> for LeafCollector<'a, T> {
-        fn leaf(&self, node: &'a Node<T>) {
+    impl<'a, T, P> Visitor<'a, T, P> for LeafCollector<'a, T, P> {
+        fn leaf(&self, node: &'a Node<T, P>) {
             self.data.borrow_mut().push(node);
         }
     }
 
-    struct RedCollector<'a, T> {
-        data: RefCell<Vec<&'a Node<T>>>,
+    struct RedCollector<'a, T, P> {
+        data: RefCell<Vec<&'a Node<T, P>>>,
     }
 
-    impl<'a, T> RedCollector<'a, T> {
+    impl<'a, T, P> RedCollector<'a, T, P> {
         fn new() -> Self {
             let data = RefCell::new(vec![]);
             Self { data }
         }
     }
 
-    impl<'a, T> Visitor<'a, T> for RedCollector<'a, T> {
-        fn every(&self, node: &'a Node<T>) {
+    impl<'a, T, P> Visitor<'a, T, P> for RedCollector<'a, T, P> {
+        fn every(&self, node: &'a Node<T, P>) {
             if node.color.is_red() {
                 self.data.borrow_mut().push(node);
             }
@@ -153,10 +150,10 @@ mod tests {
         mem::transmute::<&'b T, &'a T>(r)
     }
 
-    fn recurse_check<'a, T: Ord + fmt::Debug + 'a>(
-        ptr: NonNull<Node<T>>,
+    fn recurse_check<'a, T: Ord + fmt::Debug + 'a, P: 'a>(
+        ptr: NonNull<Node<T, P>>,
         level: u8,
-        visitor: &impl Visitor<'a, T>,
+        visitor: &impl Visitor<'a, T, P>,
     ) {
         unsafe {
             if level > 0 {
@@ -210,7 +207,7 @@ mod tests {
                 black_node_counter
             };
 
-            let leaf_collector: LeafCollector<u8> = LeafCollector::new();
+            let leaf_collector = LeafCollector::new();
             recurse_check(tree.root.unwrap(), 0, &leaf_collector);
             for e in leaf_collector.data.borrow().iter() {
                 let mut black_node_counter = if e.color.is_black() { 1 } else { 0 };
@@ -234,9 +231,10 @@ mod tests {
 
     #[test]
     fn red_node_has_black_children_only() {
-        for i in 1..255 {
+        for i in 1..7 {
             let tree = make_tree(i);
-            let red_node_collector: RedCollector<u8> = RedCollector::new();
+            let red_node_collector = RedCollector::new();
+            recurse_check(tree.root.unwrap(), 0, &red_node_collector);
             for e in red_node_collector.data.borrow().iter() {
                 if e.left.or(e.right).is_some() {
                     unsafe {
@@ -279,7 +277,7 @@ mod tests {
 
         fn make_tree(drop_indicators: Rc<RefCell<Vec<bool>>>) -> Tree<usize, Model> {
             let mut tree = Tree::default();
-            for i in 0..10 {
+            for i in 0..drop_indicators.borrow().len() {
                 tree.insert(i, Model{
                     id: i,
                     drop_indicators: drop_indicators.clone(),
@@ -302,7 +300,8 @@ mod tests {
             //                   r9
             let mut drop_indicators = Rc::new(RefCell::new(vec![false; 10]));
             let mut tree = make_tree(drop_indicators.clone());
-            let red_node_collector: RedCollector<u8> = RedCollector::new();
+            let red_node_collector = RedCollector::new();
+            recurse_check(tree.root.unwrap(), 0, &red_node_collector);
             for node in red_node_collector.data.borrow().iter() {
                 let val = unsafe { node.value.as_ref() };
                 assert!([7, 9].contains(val), "unexpected value {}", val);
@@ -321,18 +320,77 @@ mod tests {
         }
 
         #[test]
-        fn last_node() {
-            let count = random() as usize % 1000;
+        fn single() {
             let count = 1;
             let mut drop_indicators = Rc::new(RefCell::new(vec![false; count]));
             let mut tree = make_tree(drop_indicators.clone());
             tree.del(&0);
+        }
 
-            // for i in 0 .. 1000 {
-            //     let model = tree.del(&i);
-            //     // assert_eq!(model.map(|m| m.id), Some(i));
-            //     // assert!(drop_indicators.borrow()[i]);
+        #[test]
+        fn both() {
+            let count = 2;
+            let mut drop_indicators = Rc::new(RefCell::new(vec![false; count]));
+            let mut tree = make_tree(drop_indicators.clone());
+            unsafe {
+                assert_eq!(tree.find(&0).unwrap().as_ref().value.as_ref(), &0);
+                assert_eq!(tree.find(&1).unwrap().as_ref().value.as_ref(), &1);
+            }
+
+            let Model{ id, .. } = tree.del(&0).unwrap();
+            assert_eq!(id, 0);
+            assert!(drop_indicators.borrow()[0]);
+            unsafe {
+                assert_eq!(tree.root.unwrap().as_ref().value.as_ref(), &1);
+                assert_eq!(tree.find(&1).unwrap().as_ref().value.as_ref(), &1);
+            }
+
+            let Model{ id, .. } = tree.del(&1).unwrap();
+            assert_eq!(id, 1);
+            assert!(drop_indicators.borrow()[1]);
+        }
+
+        #[test]
+        fn test10() {
+            return;
+            let count = 4;
+            let mut drop_indicators = Rc::new(RefCell::new(vec![false; count]));
+            let mut tree = make_tree(drop_indicators.clone());
+            for i in 0 .. count {
+                unsafe {
+                    assert_eq!(tree.find(&i).unwrap().as_ref().value.as_ref(), &i);
+                    assert_eq!(tree.find(&i).unwrap().as_ref().payload.id, i);
+                }
+            }
+
+            unsafe {
+                assert_eq!(tree.root.unwrap().as_ref().value.as_ref(), &1);
+            }
+
+            let id = tree.del(&0).map(|x| x.id);
+            assert_eq!(id, Some(0));
+            unsafe {
+                assert_eq!(tree.root.unwrap().as_ref().value.as_ref(), &2);
+            }
+
+            let id = tree.del(&1).map(|x| x.id);
+            assert_eq!(id, Some(1));
+            unsafe {
+                assert_eq!(tree.root.unwrap().as_ref().value.as_ref(), &2);
+            }
+
+
+            // let id = tree.del(&2).map(|x| x.id);
+            // assert_eq!(id, Some(2));
+
+            // for j in i .. count {
+            //     unsafe {
+            //         assert_eq!(tree.find(&j).map(|x| x.as_ref().value.as_ref().clone()), Some(j));
+            //         assert_eq!(tree.find(&j).unwrap().as_ref().payload.id, j);
+            //     }
             // }
+
+
         }
     }
 }
