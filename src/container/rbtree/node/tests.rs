@@ -1,31 +1,58 @@
+use super::Node as BaseNode;
 use super::*;
 use std::mem;
 
+type Node<T> = BaseNode<T, ()>;
 type Nodeu8 = NonNull<Node<u8>>;
 type LongBranch = (Nodeu8, Nodeu8, Nodeu8, Nodeu8);
 type Branch = (Nodeu8, Nodeu8, Nodeu8);
 
+unsafe fn add_node<T: Ord>(mut parent: NonNull<Node<T>>, value: T) -> NonNull<Node<T>>  {
+    parent.as_mut().add(to_heap(value), ())
+}
+
 unsafe fn make_long_branch(a: u8, g: u8, p: u8, l: u8) -> LongBranch {
-    let mut ancestor = Node::head(to_heap(a));
-    let mut grandparent = ancestor.as_mut().add(to_heap(g));
-    let mut parent = grandparent.as_mut().add(to_heap(p));
-    let mut leaf = parent.as_mut().add(to_heap(l));
+    let mut ancestor = Node::head(to_heap(a), ());
+    let mut grandparent = ancestor.as_mut().add(to_heap(g), ());
+    let mut parent = grandparent.as_mut().add(to_heap(p), ());
+    let mut leaf = parent.as_mut().add(to_heap(l), ());
     (ancestor, grandparent, parent, leaf)
 }
 
 unsafe fn make_branch(h: u8, c: u8, g: u8) -> Branch {
-    let mut head = Node::head(to_heap(h));
-    let mut child = head.as_mut().add(to_heap(c));
-    let mut grandchild = child.as_mut().add(to_heap(g));
+    let mut head = Node::head(to_heap(h), ());
+    let mut child = head.as_mut().add(to_heap(c), ());
+    let mut grandchild = child.as_mut().add(to_heap(g), ());
     (head, child, grandchild)
+}
+
+fn is_state_continue<T, P>(state: &State<T, P>, value: NonNull<BaseNode<T, P>>) -> bool {
+    match state {
+        State::Continue(x) => x == &value,
+        _ => false,
+    }
+}
+
+fn is_state_stop<T, P>(state: &State<T, P>, value: NonNull<BaseNode<T, P>>) -> bool {
+    match state {
+        State::Stop(x) => x == &value,
+        _ => false,
+    }
+}
+
+fn unwrap_keep_state<T, P>(state: State<T, P>) -> NonNull<BaseNode<T, P>> {
+    match state {
+        State::Continue(x) => x,
+        _ => panic!("state is not keep")
+    }
 }
 
 #[test]
 fn test_cmp() {
     unsafe {
-        let mut head = Node::head(to_heap(2));
-        let right = Node::head(to_heap(1));
-        let left_child = head.as_mut().add(to_heap(1));
+        let mut head = Node::head(to_heap(2), ());
+        let right = Node::head(to_heap(1), ());
+        let left_child = head.as_mut().add(to_heap(1), ());
         assert_eq!(head, head);
         assert_ne!(head, right);
         assert_eq!(left_child.as_ref().parent.unwrap(), head);
@@ -41,9 +68,9 @@ fn test_cmp() {
 #[test]
 fn sibling() {
     unsafe {
-        let mut head = Node::head(to_heap(2));
-        let left = head.as_mut().add(to_heap(1));
-        let right = head.as_mut().add(to_heap(3));
+        let mut head = Node::head(to_heap(2), ());
+        let left = head.as_mut().add(to_heap(1), ());
+        let right = head.as_mut().add(to_heap(3), ());
         assert_eq!(head.as_ref().left.unwrap(), left);
         assert_eq!(head.as_ref().right.unwrap(), right);
         assert_eq!(left.as_ref().sibling().unwrap(), right);
@@ -63,7 +90,7 @@ fn grandparent() {
 fn uncle() {
     unsafe {
         let (mut head, child1, grandchild) = make_branch(2, 3, 4);
-        let mut child2 = head.as_mut().add(to_heap(1));
+        let mut child2 = head.as_mut().add(to_heap(1), ());
         assert_eq!(grandchild.as_ref().uncle().unwrap(), child2);
     }
 }
@@ -72,7 +99,7 @@ fn uncle() {
 fn add() {
     unsafe {
         let (mut head, child1, grandchild) = make_branch(2, 3, 4);
-        let mut child2 = head.as_mut().add(to_heap(1));
+        let mut child2 = head.as_mut().add(to_heap(1), ());
         assert_eq!(child1.as_ref().parent.unwrap(), head);
         assert_eq!(child2.as_ref().parent.unwrap(), head);
         assert_eq!(grandchild.as_ref().parent.unwrap(), child1);
@@ -184,7 +211,7 @@ fn repair_left_left() {
     //           u(b)
     unsafe {
         let (mut head, parent, node) = make_branch(8, 7, 6);
-        let mut uncle = head.as_mut().add(to_heap(9));
+        let mut uncle = head.as_mut().add(to_heap(9), ());
         uncle.as_mut().color = Color::Black;
         let res = repair_step(node);
         check_node(node, Color::Red, None, None, parent, "node");
@@ -215,7 +242,7 @@ fn repair_left_right() {
     //          u(b)
     unsafe {
         let (mut head, parent, node) = make_branch(8, 6, 7);
-        let mut uncle = head.as_mut().add(to_heap(9));
+        let mut uncle = head.as_mut().add(to_heap(9), ());
         uncle.as_mut().color = Color::Black;
         let res = repair_step(node);
         check_node(node, Color::Black, parent, head, None, "node");
@@ -246,7 +273,7 @@ fn repair_right_right() {
     // u(b)
     unsafe {
         let (mut head, parent, node) = make_branch(5, 7, 8);
-        let mut uncle = head.as_mut().add(to_heap(4));
+        let mut uncle = head.as_mut().add(to_heap(4), ());
         uncle.as_mut().color = Color::Black;
         let res = repair_step(node);
         check_node(node, Color::Red, None, None, parent, "node");
@@ -277,7 +304,7 @@ fn repair_right_left() {
     //   u(b)
     unsafe {
         let (mut head, parent, node) = make_branch(5, 7, 6);
-        let mut uncle = head.as_mut().add(to_heap(4));
+        let mut uncle = head.as_mut().add(to_heap(4), ());
         uncle.as_mut().color = Color::Black;
         let res = repair_step(node);
         check_node(node, Color::Black, head, parent, None, "node");
@@ -302,7 +329,7 @@ fn repair_red_uncle() {
     //     n(r)
     unsafe {
         let (mut head, parent, node) = make_branch(5, 7, 6);
-        let mut uncle = head.as_mut().add(to_heap(4));
+        let mut uncle = head.as_mut().add(to_heap(4), ());
         let next = repair_step(node);
         assert_eq!(next.unwrap(), head);
         check_node(head, Color::Red, uncle, parent, None, "head");
@@ -365,75 +392,86 @@ fn replace_child() {
     }
 }
 
-#[test]
-fn del_step_leaf() {
-    unsafe {
-        let (head, parent, mut node) = make_branch(5, 6, 7);
-        let res = node.as_mut().del_step();
-        assert_eq!(res, None);
-        assert_eq!(parent.as_ref().right, None);
-        assert_eq!(parent.as_ref().left, None);
+mod del_step {
+    use super::*;
+
+    #[test]
+    fn leaf_in_straight_branch() {
+        // h
+        //  \
+        //   p
+        //    \
+        //     n
+        unsafe {
+            let (head, parent, mut node) = make_branch(5, 6, 7);
+            let res = node.as_mut().del_step();
+            assert!(is_state_stop(&res, node));
+            check_node(parent, Color::Red, None, None, head, "fail checking parent");
+            check_node(head, Color::Black, None, parent, None, "fail checking head");
+        }
     }
-}
 
-#[test]
-fn del_step_head_with_replacement() {
-    // it tests case when it removes head with a child.
-    // Note: It's impossible to have a head with a grandchild. It inserts a grandchild, child
-    // rotates (look repair_straight_branch test case).
-    unsafe {
-        let mut head = Node::head(to_heap(2));
-        head.as_mut().add(to_heap(3));
-        let res = head.as_mut().del_step();
-        assert_eq!(res, None);
-        assert_eq!(head.as_ref().value.as_ref(), &3);
-        assert_eq!(head.as_ref().left, None);
-        assert_eq!(head.as_ref().right, None);
+    #[test]
+    fn head_with_replacement() {
+        // it tests case when it removes head with a child.
+        // Note: It's impossible to have a tree of 3 nodes where the head has a grandchild.
+        // It inserts a grandchild, child rotates (look repair_straight_branch test case).
+        unsafe {
+            let mut head = Node::head(to_heap(2), ());
+            let right = head.as_mut().add(to_heap(3), ());
+            let res = head.as_mut().del_step();
+            assert!(is_state_stop(&res, right));
+            assert_eq!(head.as_ref().value.as_ref(), &3);
+            assert_eq!(head.as_ref().left, None);
+            assert_eq!(head.as_ref().right, None);
+        }
     }
-}
 
-#[test]
-fn del_step_internal_node_with_replacement() {
-    // delete 2
-    // a(1)     | a(1)
-    //  \       |  \
-    //   p(2)   |   n(3)
-    //    \     |
-    //     n(3) |
-    unsafe {
-        let (head, mut child, grandchild) = make_branch(1, 2, 3);
-        child.as_mut().del_step();
-        assert_eq!(head.as_ref().right.unwrap(), grandchild);
-        assert_eq!(grandchild.as_ref().parent.unwrap(), head);
+    #[test]
+    fn internal_node_with_replacement() {
+        // delete 2
+        // a(1)     | a(1)
+        //  \       |  \
+        //   p(2)   |   n(3)
+        //    \     |
+        //     n(3) |
+        unsafe {
+            let (head, mut child, grandchild) = make_branch(1, 2, 3);
+            child.as_mut().del_step();
+            assert_eq!(head.as_ref().right.unwrap(), grandchild);
+            assert_eq!(grandchild.as_ref().parent.unwrap(), head);
+        }
     }
-}
 
-#[test]
-fn del_step_head_with_replacement_and_two_children() {
-    // delete 2
-    //   h(2)      |  h(3)
-    //  /    \     |  /
-    // l(1)   r(3) | l(1)
-    unsafe {
-        let head_val = to_heap(2);
-        let right_val = to_heap(3);
-        let left_val = to_heap(1);
-        let mut head = Node::head(head_val);
-        let right = head.as_mut().add(right_val);
-        let left = head.as_mut().add(left_val);
-        let res = head.as_mut().del_step();
-        assert_eq!(res, Some(right));
-        assert_eq!(head.as_ref().value, right_val);
+    #[test]
+    fn head_with_replacement_and_two_children() {
+        type Node<T, P> = BaseNode<T, P>;
+        struct Model {
+            name: String
+        }
 
-        let res = res.unwrap().as_mut().del_step();
-        assert_eq!(res, None);
-        assert_eq!(head.as_ref().right, None);
-        assert_eq!(head.as_ref().left.unwrap().as_ref().value, left_val);
+        // delete 2
+        //   h(2)      |  h(3)
+        //  /    \     |  /
+        // l(1)   r(3) | l(1)
+        unsafe {
+            let head_val = to_heap(2);
+            let right_val = to_heap(3);
+            let left_val = to_heap(1);
+            let mut head = Node::head(head_val, Model { name: "head".to_owned() });
+            let right = head.as_mut().add(right_val, Model { name: "right hand".to_owned() });
+            let left = head.as_mut().add(left_val, Model { name: "left hand".to_owned() });
+            let res = head.as_mut().del_step();
+            assert!(is_state_continue(&res, right));
+            assert_eq!(head.as_ref().value, right_val);
+            assert_eq!(head.as_ref().payload.name, "right hand");
+
+            let res = unwrap_keep_state(res).as_mut().del_step();
+            assert!(is_state_stop(&res, right));
+            assert_eq!(head.as_ref().right, None);
+            assert_eq!(head.as_ref().left.unwrap().as_ref().value, left_val);
+        }
     }
-}
-
-unsafe fn add_node<T: Ord>(mut parent: NonNull<Node<T>>, value: T) -> NonNull<Node<T>>  {
-    parent.as_mut().add(to_heap(value))
 }
 
 #[test]
@@ -454,7 +492,7 @@ fn min_node() {
 }
 
 fn nodes_from_iter<T: Ord>(head_val: T, source: Vec<T>) -> NonNull<Node<T>> {
-    let mut head = Node::head(to_heap(head_val));
+    let mut head = Node::head(to_heap(head_val), ());
     source.into_iter().for_each(|x| unsafe {
         add_node(head, x);
     });
@@ -476,7 +514,7 @@ mod find_replacement {
     #[test]
     fn right() {
         unsafe {
-            let mut head = Node::head(to_heap(2));
+            let mut head = Node::head(to_heap(2), ());
             let right = add_node(head, 3);
             let left = add_node(head, 1);
             let replacement = head.as_ref().find_replacement();
@@ -613,6 +651,7 @@ mod fix_double_black {
         }
     }
 
+    #[test]
     fn black_sibling_without_red_child_and_red_parent() {
         //      p(r)    |   p(b)
         //     /    \   |  /    \
