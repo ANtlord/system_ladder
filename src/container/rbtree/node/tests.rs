@@ -392,76 +392,85 @@ fn replace_child() {
     }
 }
 
-#[test]
-fn del_step_leaf() {
-    unsafe {
-        let (head, parent, mut node) = make_branch(5, 6, 7);
-        let res = node.as_mut().del_step();
-        assert!(is_state_stop(&res, node));
-        assert_eq!(parent.as_ref().right, None);
-        assert_eq!(parent.as_ref().left, None);
-    }
-}
+mod del_step {
+    use super::*;
 
-#[test]
-fn del_step_head_with_replacement() {
-    // it tests case when it removes head with a child.
-    // Note: It's impossible to have a tree of 3 nodes where the head has a grandchild.
-    // It inserts a grandchild, child rotates (look repair_straight_branch test case).
-    unsafe {
-        let mut head = Node::head(to_heap(2), ());
-        let right = head.as_mut().add(to_heap(3), ());
-        let res = head.as_mut().del_step();
-        assert!(is_state_stop(&res, right));
-        assert_eq!(head.as_ref().value.as_ref(), &3);
-        assert_eq!(head.as_ref().left, None);
-        assert_eq!(head.as_ref().right, None);
-    }
-}
-
-#[test]
-fn del_step_internal_node_with_replacement() {
-    // delete 2
-    // a(1)     | a(1)
-    //  \       |  \
-    //   p(2)   |   n(3)
-    //    \     |
-    //     n(3) |
-    unsafe {
-        let (head, mut child, grandchild) = make_branch(1, 2, 3);
-        child.as_mut().del_step();
-        assert_eq!(head.as_ref().right.unwrap(), grandchild);
-        assert_eq!(grandchild.as_ref().parent.unwrap(), head);
-    }
-}
-
-#[test]
-fn del_step_head_with_replacement_and_two_children() {
-    type Node<T, P> = BaseNode<T, P>;
-    struct Model {
-        name: String
+    #[test]
+    fn leaf_in_straight_branch() {
+        // h
+        //  \
+        //   p
+        //    \
+        //     n
+        unsafe {
+            let (head, parent, mut node) = make_branch(5, 6, 7);
+            let res = node.as_mut().del_step();
+            assert!(is_state_stop(&res, node));
+            check_node(parent, Color::Red, None, None, head, "fail checking parent");
+            check_node(head, Color::Black, None, parent, None, "fail checking head");
+        }
     }
 
-    // delete 2
-    //   h(2)      |  h(3)
-    //  /    \     |  /
-    // l(1)   r(3) | l(1)
-    unsafe {
-        let head_val = to_heap(2);
-        let right_val = to_heap(3);
-        let left_val = to_heap(1);
-        let mut head = Node::head(head_val, Model { name: "head".to_owned() });
-        let right = head.as_mut().add(right_val, Model { name: "right hand".to_owned() });
-        let left = head.as_mut().add(left_val, Model { name: "left hand".to_owned() });
-        let res = head.as_mut().del_step();
-        assert!(is_state_continue(&res, right));
-        assert_eq!(head.as_ref().value, right_val);
-        assert_eq!(head.as_ref().payload.name, "right hand");
+    #[test]
+    fn head_with_replacement() {
+        // it tests case when it removes head with a child.
+        // Note: It's impossible to have a tree of 3 nodes where the head has a grandchild.
+        // It inserts a grandchild, child rotates (look repair_straight_branch test case).
+        unsafe {
+            let mut head = Node::head(to_heap(2), ());
+            let right = head.as_mut().add(to_heap(3), ());
+            let res = head.as_mut().del_step();
+            assert!(is_state_stop(&res, right));
+            assert_eq!(head.as_ref().value.as_ref(), &3);
+            assert_eq!(head.as_ref().left, None);
+            assert_eq!(head.as_ref().right, None);
+        }
+    }
 
-        let res = unwrap_keep_state(res).as_mut().del_step();
-        assert!(is_state_stop(&res, right));
-        assert_eq!(head.as_ref().right, None);
-        assert_eq!(head.as_ref().left.unwrap().as_ref().value, left_val);
+    #[test]
+    fn internal_node_with_replacement() {
+        // delete 2
+        // a(1)     | a(1)
+        //  \       |  \
+        //   p(2)   |   n(3)
+        //    \     |
+        //     n(3) |
+        unsafe {
+            let (head, mut child, grandchild) = make_branch(1, 2, 3);
+            child.as_mut().del_step();
+            assert_eq!(head.as_ref().right.unwrap(), grandchild);
+            assert_eq!(grandchild.as_ref().parent.unwrap(), head);
+        }
+    }
+
+    #[test]
+    fn head_with_replacement_and_two_children() {
+        type Node<T, P> = BaseNode<T, P>;
+        struct Model {
+            name: String
+        }
+
+        // delete 2
+        //   h(2)      |  h(3)
+        //  /    \     |  /
+        // l(1)   r(3) | l(1)
+        unsafe {
+            let head_val = to_heap(2);
+            let right_val = to_heap(3);
+            let left_val = to_heap(1);
+            let mut head = Node::head(head_val, Model { name: "head".to_owned() });
+            let right = head.as_mut().add(right_val, Model { name: "right hand".to_owned() });
+            let left = head.as_mut().add(left_val, Model { name: "left hand".to_owned() });
+            let res = head.as_mut().del_step();
+            assert!(is_state_continue(&res, right));
+            assert_eq!(head.as_ref().value, right_val);
+            assert_eq!(head.as_ref().payload.name, "right hand");
+
+            let res = unwrap_keep_state(res).as_mut().del_step();
+            assert!(is_state_stop(&res, right));
+            assert_eq!(head.as_ref().right, None);
+            assert_eq!(head.as_ref().left.unwrap().as_ref().value, left_val);
+        }
     }
 }
 

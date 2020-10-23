@@ -71,6 +71,12 @@ impl<T: Ord, P> Tree<T, P> {
         let node_ptr = node_ptr.as_mut().del();
         self.unallocate(node_ptr.as_ref().value);
         let node = *Box::from_raw(node_ptr.as_ptr());
+        let mut parent = node.parent;
+        while let Some(p) = parent {
+            self.root = parent;
+            parent = p.as_ref().parent;
+        }
+
         return node.payload;
     }
 
@@ -83,11 +89,7 @@ impl<T: Ord, P> Tree<T, P> {
         }
 
         self.root = Some(root_ptr);
-        if let Some(mut x) = self.find(value) {
-            return Some(unsafe {self.drop_node(x)});
-        }
-
-        return None;
+        self.find(value).map(|mut x| unsafe {self.drop_node(x)})
     }
 }
 
@@ -229,17 +231,42 @@ mod tests {
         }
     }
 
+    fn value_eq<T: Ord, P>(node: NodePtr<T, P>, val: &T) -> bool {
+        unsafe { node.unwrap().as_ref().value.as_ref() == val }
+    }
+
+    fn color_eq<T: Ord, P>(node: NodePtr<T, P>, color: node::Color) -> bool {
+        unsafe {
+            match color {
+                node::Color::Black => node.unwrap().as_ref().color.is_black(),
+                node::Color::Red => node.unwrap().as_ref().color.is_red(),
+            }
+        }
+    }
+
+    unsafe fn assert_node<T: Ord, P>(
+        node: NodePtr<T, P>,
+        value: &T,
+        color: node::Color,
+        parent: NodePtr<T, P>,
+    ) {
+        assert!(value_eq(node, value));
+        assert!(color_eq(node, color));
+        assert_eq!(node.unwrap().as_ref().parent, parent);
+    }
+
     #[test]
     fn red_node_has_black_children_only() {
-        for i in 1..7 {
+        for i in 1..255 {
             let tree = make_tree(i);
             let red_node_collector = RedCollector::new();
             recurse_check(tree.root.unwrap(), 0, &red_node_collector);
             for e in red_node_collector.data.borrow().iter() {
+                assert!(e.color.is_red());
                 if e.left.or(e.right).is_some() {
                     unsafe {
-                        assert!(e.left.unwrap().as_ref().color.is_red());
-                        assert!(e.right.unwrap().as_ref().color.is_red());
+                        assert!(e.left.unwrap().as_ref().color.is_black(), "Node {} corrupted", e.value.as_ref());
+                        assert!(e.right.unwrap().as_ref().color.is_black());
                     }
                 }
             }
@@ -310,7 +337,7 @@ mod tests {
             let node = tree.find(&3).unwrap();
             let root = tree.root.unwrap();
             assert_eq!(node, root);
-            drop(tree.del(&3));
+            assert!(tree.del(&3).is_some());
             dbg!(&drop_indicators);
             let drop_indicators = drop_indicators.borrow();
             assert!(!drop_indicators[..3].iter().fold(true, |x, y| x && *y));
@@ -351,8 +378,7 @@ mod tests {
         }
 
         #[test]
-        fn test10() {
-            return;
+        fn root_change() {
             let count = 4;
             let mut drop_indicators = Rc::new(RefCell::new(vec![false; count]));
             let mut tree = make_tree(drop_indicators.clone());
@@ -364,33 +390,53 @@ mod tests {
             }
 
             unsafe {
-                assert_eq!(tree.root.unwrap().as_ref().value.as_ref(), &1);
+                assert_node(tree.root, &1, node::Color::Black, None);
             }
 
-            let id = tree.del(&0).map(|x| x.id);
-            assert_eq!(id, Some(0));
             unsafe {
-                assert_eq!(tree.root.unwrap().as_ref().value.as_ref(), &2);
+                let node = tree.find(&0);
+                assert_node(node, &0, node::Color::Black, tree.root);
             }
 
-            let id = tree.del(&1).map(|x| x.id);
-            assert_eq!(id, Some(1));
             unsafe {
-                assert_eq!(tree.root.unwrap().as_ref().value.as_ref(), &2);
+                let id = tree.del(&0).map(|x| x.id);
+                assert_eq!(id, Some(0));
+                assert_node(tree.root, &2, node::Color::Black, None);
             }
 
+            unsafe {
+                assert_eq!(tree.del(&1).map(|x| x.id), Some(1));
+                assert_node(tree.root, &2, node::Color::Black, None);
+            }
 
-            // let id = tree.del(&2).map(|x| x.id);
-            // assert_eq!(id, Some(2));
+            unsafe {
+                assert_eq!(tree.del(&2).map(|x| x.id), Some(2));
+                assert_node(tree.root, &3, node::Color::Black, None);
+            }
 
-            // for j in i .. count {
-            //     unsafe {
-            //         assert_eq!(tree.find(&j).map(|x| x.as_ref().value.as_ref().clone()), Some(j));
-            //         assert_eq!(tree.find(&j).unwrap().as_ref().payload.id, j);
-            //     }
-            // }
+            assert_eq!(tree.del(&3).map(|x| x.id), Some(3));
+            assert_eq!(tree.root, None);
+            assert!(drop_indicators.borrow().iter().fold(true, |x, y| x && *y));
+        }
 
+        fn test_count(count: usize) {
+            let mut drop_indicators = Rc::new(RefCell::new(vec![false; count]));
+            let mut tree = make_tree(drop_indicators.clone());
+            for i in (0 .. count).rev() {
+                assert_eq!(tree.del(&i).unwrap().id, i);
+                assert!(drop_indicators.borrow()[i]);
+            }
 
+            assert!(drop_indicators.borrow().iter().fold(true, |x, y| x && *y));
+        }
+
+        #[test]
+        fn test_different_amounts() {
+            let mut count = 10;
+            while count <= 10000 {
+                test_count(count);
+                count *= 10;
+            }
         }
     }
 }
