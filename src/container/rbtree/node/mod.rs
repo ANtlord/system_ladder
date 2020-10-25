@@ -227,6 +227,7 @@ impl<T, P> Node<T, P> {
     }
 
     unsafe fn rotate_right(&mut self) -> Result<(), ()> {
+        dbg!("rotate_right", self as *const _);
         let mut ancestor = self.parent;
         let mut left = self.left.take().ok_or(())?;
         self.left = left.as_mut().right;
@@ -285,10 +286,8 @@ impl<T, P> Node<T, P> {
         let replacement = self.find_replacement();
         if replacement.is_none() {
             if self.color.is_black() {
-                println!("remove node with no child: fix double black");
                 self.fix_double_black()
             } else {
-                println!("remove node with no child: sibling become red");
                 self.sibling().map(|mut x| x.as_mut().color = Color::Red);
             }
 
@@ -540,7 +539,7 @@ unsafe fn repair_step<T: Ord, P>(mut new: NonNull<Node<T, P>>) -> NodePtr<T, P> 
     //     \        |  /
     //      new     | n
     if Some(new) == parent.as_ref().left {
-        grandparent.as_mut().rotate_right();
+        grandparent.as_mut().rotate_right().unwrap();
     } else if Some(new) == parent.as_ref().right {
         grandparent.as_mut().rotate_left().unwrap();
     } else {

@@ -80,8 +80,10 @@ impl<T: PartialOrd> Heap<T, SwimSink<FnBox<T>>> {
             sw: SwimSink(predicate),
         }
     }
+}
 
-    fn push(&mut self, value: T) {
+impl<T: PartialOrd, SW: Swim<T> + Sink<T>> Heap<T, SW> {
+    pub fn push(&mut self, value: T) {
         self.data.push(value);
         self.swim(self.data.len() - 1);
     }

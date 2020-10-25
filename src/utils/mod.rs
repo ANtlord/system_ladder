@@ -1,4 +1,5 @@
 pub mod vector;
+pub mod debug;
 
 use std::mem;
 use std::ptr;

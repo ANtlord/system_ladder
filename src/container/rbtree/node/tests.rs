@@ -253,6 +253,28 @@ fn repair_left_right() {
 }
 
 #[test]
+fn repair_left_right_v2() {
+    //     a(b)
+    //    /
+    // p(r)
+    //    \
+    //   n(r)
+    // --------
+    //     n(b)
+    //    / \
+    // p(r)  a(r)
+    unsafe {
+        let (mut head, parent, node) = make_branch(5, 3, 4);
+        repair(node);
+        // let res = repair_step(node);
+        // assert!(res.is_none());
+        check_node(node, Color::Black, parent, head, None, "node");
+        check_node(head, Color::Red, None, None, node, "head");
+        check_node(parent, Color::Red, None, None, node, "parent");
+    }
+}
+
+#[test]
 fn repair_right_right() {
     //     a(b)
     //    / \
