@@ -17,6 +17,8 @@ use self::node::NodePtr;
 // TODO: modify it to left leaning red-black tree
 // http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.139.282&rep=rep1&type=pdf
 // TODO: implement Drop
+// TODO: figure out owning a key by a node.
+// TODO: figure out parentless nodes.
 pub struct Tree<T, P> {
     root: NodePtr<T, P>,
 }

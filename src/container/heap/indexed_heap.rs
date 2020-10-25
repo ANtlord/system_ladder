@@ -151,10 +151,11 @@ mod tests {
 
     mod change_key {
         use super::*;
-        use std::collections::BTreeMap;
+        use crate::tprintln;
 
         #[test]
         fn basic() {
+            assert!(false);
             let mut indexed_heap = IndexedHeap::new(Box::new(|x, y| x < y)); // max oriented
             let mut persons = vec![(0.1, "Jack".to_owned()), (0.3, "Alex".to_owned()), (0.5, "Jane".to_owned())];
             persons.iter().for_each(|(x, y)| indexed_heap.insert(x.clone(), y.clone()));

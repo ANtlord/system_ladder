@@ -6,4 +6,4 @@
 .gdb_history
 *.o
 main
-main.rs
+/main.rs

@@ -11,6 +11,8 @@ mod tree;
 mod fs;
 mod container;
 mod random;
+#[macro_use]
+mod macros;
 
 use std::time;
 use std::env::args;
