@@ -13,6 +13,7 @@ pub struct List<T> {
     tail: Link<T>,
 }
 
+// TODO: implement drop
 impl<T> List<T> {
     pub fn cursor(&mut self) -> Cursor<T> {
         return Cursor::new(&self.head)

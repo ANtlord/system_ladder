@@ -51,6 +51,10 @@ fn push_heap_min() {
 mod dynamic_median {
     use super::*;
 
+    // TODO: data and queue can be replaced by a ring buffer. It is an actual data structure under
+    // the hood of VecDeque. When an element push into the VecDeque it gets a certain position
+    // which is not changed. In fact tail and head cursors of the ring buffer move. That means that
+    // ring buffer pins an object in a certain place and throw its away when a new element comes.
     struct DynamicMedian<T> {
         data: Rc<RefCell<Vec<T>>>,
         queue: VecDeque<usize>,

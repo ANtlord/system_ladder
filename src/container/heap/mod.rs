@@ -12,6 +12,7 @@ use std::ops::Div;
 use std::ops::Sub;
 
 mod indexed_heap;
+pub use indexed_heap::IndexedHeap;
 #[cfg(test)]
 mod tests;
 
@@ -31,6 +32,10 @@ pub struct Heap<T, SW> {
 }
 
 impl<T: PartialOrd, SW> Heap<T, SW> {
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
     fn len(&self) -> usize {
         self.data.len()
     }
@@ -92,10 +97,16 @@ impl<T: PartialOrd, SW: Swim<T> + Sink<T>> Heap<T, SW> {
         if self.data.len() == 0 {
             None
         } else {
-            let ret = self.data.swap_remove(0);
+            let ret = self.swap_remove(0)?;
             self.sink(0);
             Some(ret)
         }
+    }
+
+    fn swap_remove(&mut self, pos: usize) -> Option<T> {
+        let n = self.data.len() - 1;
+        Swim::swap(&self.sw, &mut self.data, pos, n);
+        self.data.pop()
     }
 
     fn take(&mut self, val: &T) -> Option<T> {
@@ -104,7 +115,7 @@ impl<T: PartialOrd, SW: Swim<T> + Sink<T>> Heap<T, SW> {
     }
 
     fn remove(&mut self, pos: usize) -> T {
-        let ret = self.data.swap_remove(pos);
+        let ret = self.swap_remove(pos).unwrap();
         if pos < self.data.len() {
             self.sink(pos);
             self.swim(pos);
