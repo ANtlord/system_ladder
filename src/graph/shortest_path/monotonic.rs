@@ -44,17 +44,11 @@ impl<'a> Monotonic<'a> {
         graph.adj(0).for_each(|x| heap.push(QueuedEdge(x, x.weight)));
 
         while let Some(QueuedEdge(edge, distance)) = heap.pop() {
-            let vertex = edge.to; // 2
-            if dist_to[vertex] > distance { // inf > 0.1
+            let vertex = edge.to;
+            if dist_to[vertex] > distance {
                 dist_to[vertex] = distance;
             }
 
-            // TODO: Running time checking every adjacement edge can be optimized for free in term of memory.
-            // Every checked edge can be moved in the in the end of the bag of the adjacement
-            // edges and counted. Then it iterates edges while number of iteration is less than
-            // difference of number of edges and the counter. As we have counters already for every
-            // vertex (visited_edges_counters) it doesn't require additional memory.
-            //
             // Requires:
             // - add method `adj_mut` which allows to get an edge of the vertex and move it to the
             // tail of its list after use optionaly. (Probably need a some sort of container with a
@@ -62,9 +56,44 @@ impl<'a> Monotonic<'a> {
             // - add method `move_to_end` or `swap`. `move_to_end` requires doubly linked list to be
             // used under the hood of the Bag but `swap` requires dynamic array (aka Vec).
 
-            // [&Edge{from: 2, to: 3, weight: 0.2}]
             let mut next_edges = graph.adj(vertex).collect::<Vec<_>>();
-            // descending - sort ascending and vice versa
+            // sorting allows to avoid checking of distances of all adjacement edges of all
+            // adjacement edges of the current edge.
+            // It's n^2 to determine which of edges is eligable to relax. Example of searching
+            // descending shortest paths
+            //
+            //       A -- 0.2 -> C -- 0.5 --> D
+            //      /           / \
+            //     /           /   \
+            //    /           /    0.1
+            //  0.3         0.6      \
+            //  /           /         E
+            // S -- 0.9 -> B
+            //
+            // Consider vertex C. A-C comes first and takes C-E as (C-E).weight < (A-C).weight. Then B-C
+            // comes into. It's able to take both of the edges as weight of them is lower than
+            // (B-C).weight but C-E is took already so B-C must take only C-D.
+            //
+            // Without sorting it requires checking distances to all adjacement of all
+            // adjacement edges of vertex B. If we found them we relax B-C. When S-B
+            // comes into it checks distance of C which is 0.5 so it's lower than 1.5 then
+            // no reason to consider B-C but algorithm misses C-D. To fix the mistake it requires
+            // to check C-D and C-E then if distance to one of them is greater than distance to C +
+            // edge weight then we relax B-C.
+            //
+            // Problem is having not only B-C but having B-C1, B-C2 ... B-Cn in this case it
+            // requires to check all edges which go from Ci which means n^2 running time instead of nlog(n)
+            // consider sorting.
+            //
+            // TODO: POSSIBLE OPTIMIZATION from nlog(n) to n:
+            // Do not sort edges and check them all consider weight.
+            // Every checked edge can be moved in the in the end of the bag of the adjacement
+            // edges and counted. Then it iterates edges while number of iteration is less than
+            // difference of number of edges and the counter. As we have counters already for every
+            // vertex (visited_edges_counters) it doesn't require additional memory. Possible
+            // problem is mutation of digraph but it gets initial state after the process.
+
+            // descending path - sort ascending and vice versa
             quicksort(&mut next_edges, |x, y| comp(y.weight, x.weight));
             let processed_edges_count = visited_edges_counters[vertex];
             next_edges[processed_edges_count .. ].iter().filter(|x| comp(edge.weight, x.weight)).for_each(|next_edge| {
@@ -156,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn tricky() {
+    fn shortest_longest_intersection() {
         const TARGET: usize = 4;
         let edges = vec![
             Edge{from: 0, to: 1, weight: 0.6},
