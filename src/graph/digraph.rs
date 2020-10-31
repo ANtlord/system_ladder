@@ -1,29 +1,12 @@
 use std::marker::PhantomData;
-use crate::list::List;
 use std::slice::Iter as SliceIter;
+use crate::container::Bag;
 
+#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
 pub struct Edge {
     pub from: usize,
     pub to: usize,
     pub weight: f32,
-}
-
-struct Bag<T> {
-    inner: List<T>,
-}
-
-impl<T> Bag<T> {
-    fn new() -> Self {
-        Self { inner: List::new() }
-    }
-
-    fn push(&mut self, v: T) {
-        self.inner.push_back(v);
-    }
-
-    fn iter(&self) -> impl Iterator<Item=&T> {
-        self.inner.iter()
-    }
 }
 
 pub struct Digraph {
@@ -35,7 +18,7 @@ pub struct Digraph {
 impl Digraph {
     pub fn new(vertex_count: usize) -> Self {
         let mut data = Vec::with_capacity(vertex_count);
-        (0 .. vertex_count).for_each(|_| data.push(Bag::new()));
+        (0 .. vertex_count).for_each(|_| data.push(Bag::default()));
         Self { data, vertex_count, edge_count: 0 }
     }
 
@@ -57,24 +40,6 @@ impl Digraph {
 mod tests {
     use super::*;
     use std::fmt;
-
-    impl Clone for Edge {
-        fn clone(&self) -> Self {
-            Self{from: self.from, to: self.to, weight: self.weight}
-        }
-    }
-
-    impl fmt::Debug for Edge {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "Edge {{ from: {}, to: {}, weight: {} }}", self.from, self.to, self.weight)
-        }
-    }
-
-    impl PartialEq for Edge {
-        fn eq(&self, other: &Self) -> bool {
-            self.from == self.from && self.to == self.to && self.weight == self.weight
-        }
-    }
 
     #[test]
     fn adj() {

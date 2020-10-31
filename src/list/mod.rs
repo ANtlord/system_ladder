@@ -54,7 +54,7 @@ impl<T> List<T> {
         }
     }
 
-    fn pop_back(&mut self) -> Option<T> {
+    pub fn pop_back(&mut self) -> Option<T> {
         if self.is_empty() {
             println!("is empty");
             None

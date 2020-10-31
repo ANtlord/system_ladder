@@ -65,21 +65,22 @@ impl<T: PartialOrd, SW> Heap<T, SW> {
 }
 
 impl<T: PartialOrd> Heap<T, SwimSink<FnBox<T>>> {
-    fn max() -> Self {
+    pub fn max() -> Self {
         Self{
             data: Vec::new(),
             sw: SwimSink(Box::new(|a, b| a < b)),
         }
     }
 
-    fn min() -> Self {
+    pub fn min() -> Self {
         Self{
             data: Vec::new(),
             sw: SwimSink(Box::new(|a, b| a > b)),
         }
     }
 
-    fn new(predicate: FnBox<T>) -> Self {
+    // FIXME: this mustn't require PartialOrd as predicate compares items.
+    pub fn new(predicate: FnBox<T>) -> Self {
         Self{ 
             data: Vec::new(),
             sw: SwimSink(predicate),
@@ -92,8 +93,8 @@ impl<T: PartialOrd, SW: Swim<T> + Sink<T>> Heap<T, SW> {
         self.data.push(value);
         self.swim(self.data.len() - 1);
     }
-    
-    fn pop(&mut self) -> Option<T> {
+
+    pub fn pop(&mut self) -> Option<T> {
         if self.data.len() == 0 {
             None
         } else {
