@@ -6,30 +6,56 @@ use crate::graph::Digraph;
 use crate::graph::Edge;
 use crate::utils::quicksort;
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
+enum EdgeRefence<'a> {
+    Index(usize),
+    Ptr(Box<EdgeLink<'a>>),
+}
+
+#[derive(Clone)]
 struct EdgeLink<'a> {
     edge: &'a Edge,
-    previous: Option<&'a Edge>,
+    previous: Option<EdgeRefence<'a>>,
+    distance: f32,
+}
+
+impl<'a> PartialEq for EdgeLink<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.distance.eq(&other.distance)
+    }
+}
+
+impl<'a> PartialOrd for EdgeLink<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.distance.partial_cmp(&other.distance)
+    }
 }
 
 type EdgeLinks<'a> = Vec<Option<EdgeLink<'a>>>;
 
 pub struct Monotonic<'a> {
     edge_to: EdgeLinks<'a>,
+    // TODO: remove the field. edge_to contains distances.
     dist_to: Vec<f32>,
 }
 
-struct QueuedEdge<'a>(&'a Edge, f32);
-
-impl<'a> PartialEq for QueuedEdge<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        self.1.eq(&other.1)
-    }
+struct EdgeLinkIter<'a>{
+    cursor: Option<&'a EdgeLink<'a>>,
+    edge_to: &'a EdgeLinks<'a>,
 }
 
-impl<'a> PartialOrd for QueuedEdge<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.1.partial_cmp(&other.1)
+impl<'a> Iterator for EdgeLinkIter<'a> {
+    type Item = &'a Edge;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.cursor.take();
+        let previous = current.and_then(|x| x.previous.as_ref());
+        self.cursor = previous.and_then(|prev| match prev {
+            EdgeRefence::Index(index) => self.edge_to[*index].as_ref(),
+            EdgeRefence::Ptr(ptr) => Some(ptr.as_ref()),
+        });
+
+        current.map(|x| x.edge)
     }
 }
 
@@ -41,20 +67,17 @@ impl<'a> Monotonic<'a> {
         let mut edge_to: EdgeLinks<'a> = vec![None; graph.len()];
         let mut dist_to = vec![INFINITY; graph.len()];
         dist_to[0] = 0.;
-        graph.adj(0).for_each(|x| heap.push(QueuedEdge(x, x.weight)));
+        graph.adj(0).for_each(|x| {
+            let link = EdgeLink{ edge: x, previous: None, distance: x.weight };
+            edge_to[x.to] = Some(link.clone());
+            heap.push(link);
+        });
 
-        while let Some(QueuedEdge(edge, distance)) = heap.pop() {
-            let vertex = edge.to;
-            if dist_to[vertex] > distance {
-                dist_to[vertex] = distance;
+        while let Some(edge_link) = heap.pop() {
+            let vertex = edge_link.edge.to;
+            if dist_to[vertex] > edge_link.distance {
+                dist_to[vertex] = edge_link.distance;
             }
-
-            // Requires:
-            // - add method `adj_mut` which allows to get an edge of the vertex and move it to the
-            // tail of its list after use optionaly. (Probably need a some sort of container with a
-            // flag indicates need of moving to the tail)
-            // - add method `move_to_end` or `swap`. `move_to_end` requires doubly linked list to be
-            // used under the hood of the Bag but `swap` requires dynamic array (aka Vec).
 
             let mut next_edges = graph.adj(vertex).collect::<Vec<_>>();
             // sorting allows to avoid checking of distances of all adjacement edges of all
@@ -92,24 +115,45 @@ impl<'a> Monotonic<'a> {
             // difference of number of edges and the counter. As we have counters already for every
             // vertex (visited_edges_counters) it doesn't require additional memory. Possible
             // problem is mutation of digraph but it gets initial state after the process.
+            //
+            // Requires:
+            // - add method `adj_mut` which allows to get an edge of the vertex and move it to the
+            // tail of its list after use optionaly. (Probably need a some sort of container with a
+            // flag indicates need of moving to the tail)
+            // - add method `move_to_end` or `swap`. `move_to_end` requires doubly linked list to be
+            // used under the hood of the Bag but `swap` requires dynamic array (aka Vec).
 
             // descending path - sort ascending and vice versa
             quicksort(&mut next_edges, |x, y| comp(y.weight, x.weight));
             let processed_edges_count = visited_edges_counters[vertex];
-            next_edges[processed_edges_count .. ].iter().filter(|x| comp(edge.weight, x.weight)).for_each(|next_edge| {
-                let next_vertex_distance = distance + next_edge.weight;
+            next_edges[processed_edges_count .. ].iter().take_while(|x| comp(edge_link.edge.weight, x.weight)).for_each(|next_edge| {
                 visited_edges_counters[vertex] += 1;
+                let next_vertex_distance = edge_link.distance + next_edge.weight;
+                let is_edge_saved = edge_to[vertex].as_ref().map(|x| (x.edge.from, x.edge.to) == (edge_link.edge.from, vertex));
+                let previous = Some(if is_edge_saved.unwrap_or(false) {
+                    EdgeRefence::Index(vertex)
+                } else {
+                    EdgeRefence::Ptr(Box::new(edge_link.clone()))
+                });
+
+                let next_edge_link = EdgeLink{ edge: next_edge, previous, distance: next_vertex_distance };
                 if dist_to[next_edge.to] > next_vertex_distance { 
                     // dist_to[next_edge.to] = next_vertex_distance;
-                    edge_to[next_edge.to] = Some(EdgeLink{ edge: next_edge, previous: Some(edge) });
+                    edge_to[next_edge.to] = Some(next_edge_link.clone());
                 }
 
-                heap.push(QueuedEdge(next_edge, next_vertex_distance));
-
+                heap.push(next_edge_link);
             });
         }
 
         Self { edge_to, dist_to }
+    }
+
+    fn path_to(&self, vertex: usize) -> EdgeLinkIter {
+        EdgeLinkIter{
+            cursor: self.edge_to[vertex].as_ref(),
+            edge_to: &self.edge_to,
+        }
     }
 }
 
@@ -132,7 +176,7 @@ mod tests {
             let shortest_path = Monotonic::new(&graph, self.ascending);
             match self.expected_edge {
                 Some(ref expected) => {
-                    let actual = shortest_path.edge_to[self.target].map(|x| x.edge);
+                    let actual = shortest_path.edge_to[self.target].as_ref().map(|x| x.edge);
                     assert_eq!(actual, Some(expected));
                 },
                 None => assert!(shortest_path.edge_to[self.target].is_none()),
@@ -226,5 +270,11 @@ mod tests {
         assert_eq!(shortest_path.dist_to[5], fifth_vertex_distance);
         assert_eq!(shortest_path.dist_to[4], third_vertex_distance);
         assert_eq!(shortest_path.dist_to[3], fourth_vertex_distance);
+
+        let mut iter = shortest_path.path_to(5);
+        assert_eq!(iter.next(), Some(&Edge{from: 1, to: 5, weight: 0.4}));
+        assert_eq!(iter.next(), Some(&Edge{from: 2, to: 1, weight: 0.6}));
+        assert_eq!(iter.next(), Some(&Edge{from: 0, to: 2, weight: 0.7}));
+        assert_eq!(iter.next(), None);
     }
 }
