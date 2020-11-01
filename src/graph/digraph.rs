@@ -2,7 +2,8 @@ use std::marker::PhantomData;
 use std::slice::Iter as SliceIter;
 use crate::container::Bag;
 
-#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
+#[cfg_attr(test, derive(Clone, Debug))]
+#[derive(PartialEq)]
 pub struct Edge {
     pub from: usize,
     pub to: usize,

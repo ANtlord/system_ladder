@@ -7,7 +7,7 @@ use crate::graph::Edge;
 use crate::utils::quicksort;
 
 #[derive(Clone)]
-enum EdgeRefence<'a> {
+enum EdgeReference<'a> {
     Index(usize),
     Ptr(Box<EdgeLink<'a>>),
 }
@@ -15,7 +15,7 @@ enum EdgeRefence<'a> {
 #[derive(Clone)]
 struct EdgeLink<'a> {
     edge: &'a Edge,
-    previous: Option<EdgeRefence<'a>>,
+    previous: Option<EdgeReference<'a>>,
     distance: f32,
 }
 
@@ -51,8 +51,8 @@ impl<'a> Iterator for EdgeLinkIter<'a> {
         let current = self.cursor.take();
         let previous = current.and_then(|x| x.previous.as_ref());
         self.cursor = previous.and_then(|prev| match prev {
-            EdgeRefence::Index(index) => self.edge_to[*index].as_ref(),
-            EdgeRefence::Ptr(ptr) => Some(ptr.as_ref()),
+            EdgeReference::Index(index) => self.edge_to[*index].as_ref(),
+            EdgeReference::Ptr(ptr) => Some(ptr.as_ref()),
         });
 
         current.map(|x| x.edge)
@@ -67,16 +67,12 @@ impl<'a> Monotonic<'a> {
         let mut edge_to: EdgeLinks<'a> = vec![None; graph.len()];
         let mut dist_to = vec![INFINITY; graph.len()];
         dist_to[0] = 0.;
-        graph.adj(0).for_each(|x| {
-            let link = EdgeLink{ edge: x, previous: None, distance: x.weight };
-            edge_to[x.to] = Some(link.clone());
-            heap.push(link);
-        });
-
+        graph.adj(0).for_each(|x| heap.push(EdgeLink{ edge: x, previous: None, distance: x.weight }));
         while let Some(edge_link) = heap.pop() {
             let vertex = edge_link.edge.to;
             if dist_to[vertex] > edge_link.distance {
                 dist_to[vertex] = edge_link.distance;
+                edge_to[vertex] = Some(edge_link.clone());
             }
 
             let mut next_edges = graph.adj(vertex).collect::<Vec<_>>();
@@ -129,19 +125,13 @@ impl<'a> Monotonic<'a> {
             next_edges[processed_edges_count .. ].iter().take_while(|x| comp(edge_link.edge.weight, x.weight)).for_each(|next_edge| {
                 visited_edges_counters[vertex] += 1;
                 let next_vertex_distance = edge_link.distance + next_edge.weight;
-                let is_edge_saved = edge_to[vertex].as_ref().map(|x| (x.edge.from, x.edge.to) == (edge_link.edge.from, vertex));
-                let previous = Some(if is_edge_saved.unwrap_or(false) {
-                    EdgeRefence::Index(vertex)
+                let previous = Some(if edge_to[vertex].as_ref().map(|x| x.edge == edge_link.edge).unwrap_or(false) {
+                    EdgeReference::Index(vertex)
                 } else {
-                    EdgeRefence::Ptr(Box::new(edge_link.clone()))
+                    EdgeReference::Ptr(Box::new(edge_link.clone()))
                 });
 
                 let next_edge_link = EdgeLink{ edge: next_edge, previous, distance: next_vertex_distance };
-                if dist_to[next_edge.to] > next_vertex_distance { 
-                    // dist_to[next_edge.to] = next_vertex_distance;
-                    edge_to[next_edge.to] = Some(next_edge_link.clone());
-                }
-
                 heap.push(next_edge_link);
             });
         }
@@ -160,6 +150,8 @@ impl<'a> Monotonic<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem;
+
 
     struct Test {
         target: usize,
@@ -182,7 +174,9 @@ mod tests {
                 None => assert!(shortest_path.edge_to[self.target].is_none()),
             }
 
-            assert_eq!(shortest_path.dist_to[self.target], self.expected_distance);
+            let actual_distance = shortest_path.edge_to[self.target].as_ref().map(|x| x.distance);
+            assert!(actual_distance.is_some());
+            assert_eq!(actual_distance.unwrap(), self.expected_distance);
         }
     }
 
@@ -277,4 +271,38 @@ mod tests {
         assert_eq!(iter.next(), Some(&Edge{from: 0, to: 2, weight: 0.7}));
         assert_eq!(iter.next(), None);
     }
+
+    #[test]
+    fn three_descending_paths_through_one_vertex() {
+        // visualize dot ./assets/memory.dot -Tsvg > memory.svg
+        let edges = vec![
+            Edge{from: 0, to: 1, weight: 0.2},
+            Edge{from: 1, to: 2, weight: 0.1},
+
+            Edge{from: 0, to: 1, weight: 0.3},
+            Edge{from: 1, to: 3, weight: 0.2},
+
+            Edge{from: 0, to: 1, weight: 0.4},
+            Edge{from: 1, to: 4, weight: 0.3},
+        ];
+
+        let mut graph = Digraph::new(5);
+        edges.into_iter().for_each(|x| graph.add(x));
+        let shortest_path = Monotonic::new(&graph, false);
+        let mut path4 = shortest_path.path_to(4);
+        assert_eq!(path4.next(), Some(&Edge{from: 1, to: 4, weight: 0.3}));
+        assert_eq!(path4.next(), Some(&Edge{from: 0, to: 1, weight: 0.4}));
+        assert_eq!(path4.next(), None);
+
+        let mut path3 = shortest_path.path_to(3);
+        assert_eq!(path3.next(), Some(&Edge{from: 1, to: 3, weight: 0.2}));
+        assert_eq!(path3.next(), Some(&Edge{from: 0, to: 1, weight: 0.3}));
+        assert_eq!(path3.next(), None);
+
+        let mut path2 = shortest_path.path_to(2);
+        assert_eq!(path2.next(), Some(&Edge{from: 1, to: 2, weight: 0.1}));
+        assert_eq!(path2.next(), Some(&Edge{from: 0, to: 1, weight: 0.2}));
+        assert_eq!(path2.next(), None);
+    }
+
 }
