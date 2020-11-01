@@ -59,4 +59,25 @@ mod tests {
         assert_eq!(shortest_path.dist_to, expected_dist_to);
         assert_eq!(shortest_path.edge_to.iter().map(|x| x.from).collect::<Vec<usize>>(), expected_edge_to_from);
     }
+
+    #[test]
+    fn second_shortest_path() {
+        let edges = vec![
+            Edge{from: 0, to: 1, weight: 0.1},
+            Edge{from: 0, to: 1, weight: 0.2},
+            Edge{from: 0, to: 1, weight: 0.3},
+
+            Edge{from: 1, to: 2, weight: 0.1},
+            Edge{from: 1, to: 2, weight: 0.2},
+            Edge{from: 1, to: 2, weight: 0.3},
+
+            Edge{from: 2, to: 3, weight: 0.1},
+            Edge{from: 2, to: 3, weight: 0.2},
+            Edge{from: 2, to: 3, weight: 0.3},
+        ];
+
+        let mut di = Digraph::new(4);
+        edges.into_iter().for_each(|x| di.add(x));
+        let shortest_path = Dijkstra::new(&di);
+    }
 }

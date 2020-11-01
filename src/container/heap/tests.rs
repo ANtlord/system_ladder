@@ -93,7 +93,6 @@ mod dynamic_median {
                     &data[*self.gt.front()],
                     &data[*self.lt.front()],
                 ])
-                // data[*self.gt.front()].avg(&data[*self.lt.front()])
             } else {
                 T::avg(&[&data[*self.gt.front()]])
             }

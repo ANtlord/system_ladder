@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn shortest_wrong() {
+    fn shortest_wrong_ascending() {
         const TARGET: usize = 5;
         let edges = vec![
             Edge{from: 0, to: 1, weight: 0.3},
@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn shortest_right() {
+    fn shortest_right_ascending() {
         const TARGET: usize = 5;
         let edges = vec![
             Edge{from: 0, to: 1, weight: 0.3},
@@ -218,7 +218,27 @@ mod tests {
     }
 
     #[test]
-    fn shortest_longest_intersection() {
+    fn shortest_right_descending() {
+        const TARGET: usize = 4;
+        let edges = vec![
+            Edge{from: 0, to: 1, weight: 0.6},
+            Edge{from: 1, to: 2, weight: 0.3},
+
+            Edge{from: 0, to: 2, weight: 0.3},
+            Edge{from: 2, to: 3, weight: 0.2},
+            Edge{from: 3, to: TARGET, weight: 0.1},
+        ];
+        Test{
+            target: TARGET,
+            expected_edge: Some(edges[4].clone()),
+            expected_distance: edges[2..].iter().map(|x| x.weight).sum(),
+            edges,
+            ascending: false,
+        }.run();
+    }
+
+    #[test]
+    fn alternative_right_descending() {
         const TARGET: usize = 4;
         let edges = vec![
             Edge{from: 0, to: 1, weight: 0.6},

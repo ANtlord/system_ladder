@@ -1,0 +1,18 @@
+digraph {
+	rankdir="LR";  // horizontal layout
+	0 -> 1 [label=0.3, color=green];
+	1 -> 2 [label=0.4, color=green];
+	2 -> 5 [label=0.5, color=green];
+
+	0 -> 3 [label=0.1];
+	3 -> 4 [label=0.2];
+	4 -> 5 [label=0.1];
+
+	subgraph {
+		label = "Legend"
+		a [style=invis];
+        b [style=invis];
+		shape = "rectangle"
+		a -> b [color=green, label="right path"];
+	}
+}
