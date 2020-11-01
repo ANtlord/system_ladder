@@ -35,8 +35,6 @@ type EdgeLinks<'a> = Vec<Option<EdgeLink<'a>>>;
 
 pub struct Monotonic<'a> {
     edge_to: EdgeLinks<'a>,
-    // TODO: remove the field. edge_to contains distances.
-    dist_to: Vec<f32>,
 }
 
 struct EdgeLinkIter<'a>{
@@ -65,13 +63,10 @@ impl<'a> Monotonic<'a> {
         let mut heap = Heap::min();
         let mut visited_edges_counters = vec![0usize; graph.len()];
         let mut edge_to: EdgeLinks<'a> = vec![None; graph.len()];
-        let mut dist_to = vec![INFINITY; graph.len()];
-        dist_to[0] = 0.;
         graph.adj(0).for_each(|x| heap.push(EdgeLink{ edge: x, previous: None, distance: x.weight }));
         while let Some(edge_link) = heap.pop() {
             let vertex = edge_link.edge.to;
-            if dist_to[vertex] > edge_link.distance {
-                dist_to[vertex] = edge_link.distance;
+            if edge_to[vertex].as_ref().map_or(INFINITY, |x| x.distance) > edge_link.distance {
                 edge_to[vertex] = Some(edge_link.clone());
             }
 
@@ -136,7 +131,7 @@ impl<'a> Monotonic<'a> {
             });
         }
 
-        Self { edge_to, dist_to }
+        Self { edge_to }
     }
 
     fn path_to(&self, vertex: usize) -> EdgeLinkIter {
@@ -243,6 +238,10 @@ mod tests {
         }.run();
     }
 
+    fn dist(el: &EdgeLink) -> f32 {
+        el.distance
+    }
+
     #[test]
     fn descending_from_two_paths() {
         let edges = vec![
@@ -261,9 +260,9 @@ mod tests {
         let mut graph = Digraph::new(edges.len());
         edges.into_iter().for_each(|x| graph.add(x));
         let shortest_path = Monotonic::new(&graph, false);
-        assert_eq!(shortest_path.dist_to[5], fifth_vertex_distance);
-        assert_eq!(shortest_path.dist_to[4], third_vertex_distance);
-        assert_eq!(shortest_path.dist_to[3], fourth_vertex_distance);
+        assert_eq!(shortest_path.edge_to[5].as_ref().map(dist), Some(fifth_vertex_distance));
+        assert_eq!(shortest_path.edge_to[4].as_ref().map(dist), Some(third_vertex_distance));
+        assert_eq!(shortest_path.edge_to[3].as_ref().map(dist), Some(fourth_vertex_distance));
 
         let mut iter = shortest_path.path_to(5);
         assert_eq!(iter.next(), Some(&Edge{from: 1, to: 5, weight: 0.4}));
@@ -305,4 +304,35 @@ mod tests {
         assert_eq!(path2.next(), None);
     }
 
+    #[test]
+    fn memory() {
+        // visualize dot ./assets/memory.dot -Tsvg > memory.svg
+        let edges = vec![
+            Edge{from: 0, to: 1, weight: 0.2},
+            Edge{from: 1, to: 2, weight: 0.1},
+
+            Edge{from: 0, to: 1, weight: 0.3},
+            Edge{from: 1, to: 3, weight: 0.2},
+
+            Edge{from: 0, to: 1, weight: 0.4},
+            Edge{from: 1, to: 4, weight: 0.3},
+        ];
+
+        let edge_reference_index = EdgeReference::Index(1);
+        assert_eq!(mem::size_of_val(&edge_reference_index), 16);
+        let edge_link = EdgeLink{ edge: &edges[0], previous: None, distance: 0f32 };
+        assert_eq!(mem::size_of_val(&edge_link), 32);
+
+        let edge_link_previous = EdgeLink{ edge: &edges[0], previous: Some(edge_reference_index), distance: 0f32 };
+        assert_eq!(mem::size_of_val(&edge_link_previous), 32);
+
+        let edge_reference_ptr = EdgeReference::Ptr(Box::new(edge_link_previous));
+        assert_eq!(mem::size_of_val(&edge_reference_ptr), 16);
+
+        let mut graph = Digraph::new(5);
+        edges.into_iter().for_each(|x| graph.add(x));
+        let shortest_path = Monotonic::new(&graph, false);
+        // without alternative edges which allocated on the heap. Actual size is 32 * 5 bytes
+        assert_eq!(mem::size_of_val(&shortest_path), 24);
+    }
 }
