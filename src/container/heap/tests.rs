@@ -144,9 +144,9 @@ mod dynamic_median {
                     let data = self.data.borrow();
                     let to_remove = self.queue.pop_front().unwrap();
                     if &data[to_remove] <= &data[*self.lt.front()] {
-                        self.lt.take(&to_remove);
+                        self.lt.take(&to_remove); // FIXME: this is O(n)
                     } else {
-                        self.gt.take(&to_remove);
+                        self.gt.take(&to_remove); // FIXME: this is O(n)
                     }
 
                     to_remove

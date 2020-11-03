@@ -88,7 +88,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn second_shortest_path() {
+    fn different_paths() {
+        let edges = vec![
+            Edge{from: 0, to: 1, weight: 0.1},
+            Edge{from: 1, to: 2, weight: 0.1},
+            Edge{from: 2, to: 4, weight: 0.1},
+
+            Edge{from: 0, to: 3, weight: 0.2},
+            Edge{from: 3, to: 4, weight: 0.2},
+            Edge{from: 4, to: 5, weight: 0.1},
+        ];
+
+        let mut di = Digraph::new(6);
+        edges.into_iter().for_each(|x| di.add(x));
+        let k_shortest_path = KShortestPaths::new(&di, 2, 0);
+
+        let mut path51 = k_shortest_path.path_to(5, 1);
+        assert_eq!(path51.next(), Some(&Edge{from: 4, to: 5, weight: 0.1}));
+        assert_eq!(path51.next(), Some(&Edge{from: 3, to: 4, weight: 0.2}));
+        assert_eq!(path51.next(), Some(&Edge{from: 0, to: 3, weight: 0.2}));
+        assert_eq!(path51.next(), None);
+
+        let mut path50 = k_shortest_path.path_to(5, 0);
+        assert_eq!(path50.next(), Some(&Edge{from: 4, to: 5, weight: 0.1}));
+        assert_eq!(path50.next(), Some(&Edge{from: 2, to: 4, weight: 0.1}));
+        assert_eq!(path50.next(), Some(&Edge{from: 1, to: 2, weight: 0.1}));
+        assert_eq!(path50.next(), Some(&Edge{from: 0, to: 1, weight: 0.1}));
+        assert_eq!(path50.next(), None);
+    }
+
+    #[test]
+    fn same_nodes_different_paths() {
         let edges = vec![
             Edge{from: 0, to: 1, weight: 0.1},
             Edge{from: 0, to: 1, weight: 0.2},
@@ -120,10 +150,10 @@ mod tests {
 
         assert_eq!(k_shortest_path.path_to(3, 3).next(), None);
 
-        let mut path32 = k_shortest_path.path_to(3, 1);
-        assert_eq!(path32.next(), Some(&Edge{from: 2, to: 3, weight: 0.2}));
-        assert_eq!(path32.next(), Some(&Edge{from: 1, to: 2, weight: 0.1}));
-        assert_eq!(path32.next(), Some(&Edge{from: 0, to: 1, weight: 0.1}));
-        assert_eq!(path32.next(), None);
+        let mut path31 = k_shortest_path.path_to(3, 1);
+        assert_eq!(path31.next(), Some(&Edge{from: 2, to: 3, weight: 0.2}));
+        assert_eq!(path31.next(), Some(&Edge{from: 1, to: 2, weight: 0.1}));
+        assert_eq!(path31.next(), Some(&Edge{from: 0, to: 1, weight: 0.1}));
+        assert_eq!(path31.next(), None);
     }
 }

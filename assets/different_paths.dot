@@ -1,0 +1,10 @@
+digraph {
+	rankdir="LR";  // horizontal layout
+	0 -> 1 [label="0.1"]
+	1 -> 2 [label="0.1"]
+	2 -> 4 [label="0.1"]
+	4 -> 5 [label="0.1"]
+
+	0 -> 3 [label="0.2"]
+	3 -> 4 [label="0.2"]
+}
