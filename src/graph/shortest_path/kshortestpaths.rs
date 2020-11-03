@@ -31,6 +31,7 @@ struct KShortestPathsIter<'a> {
     path_order: usize,
 }
 
+/// Provides edges in reverse order but without copying.
 impl<'a> Iterator for KShortestPathsIter<'a> {
     type Item = &'a Edge;
 

@@ -16,6 +16,10 @@ pub struct Digraph {
     data: Vec<Bag<Edge>>,
 }
 
+struct EdgeIter<'a> {
+    data: &'a Vec<Bag<Edge>>,
+}
+
 impl Digraph {
     pub fn new(vertex_count: usize) -> Self {
         let mut data = Vec::with_capacity(vertex_count);
