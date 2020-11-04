@@ -10,6 +10,7 @@ pub struct Bag<T> {
     inner: List<T>,
 }
 
+// TODO: examine performance with linked list under the hood.
 impl<T> Bag<T> {
     pub fn push(&mut self, v: T) {
         self.inner.push_back(v);
