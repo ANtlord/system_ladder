@@ -11,6 +11,7 @@ mod tree;
 mod fs;
 mod container;
 mod random;
+mod graph;
 #[macro_use]
 mod macros;
 

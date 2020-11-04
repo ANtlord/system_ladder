@@ -10,8 +10,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::mem;
 use std::borrow::Borrow;
+use std::fmt;
 
-struct Pair<K, V>(K, Rc<V>);
+pub struct Pair<K, V>(K, Rc<V>);
 
 impl<K: PartialEq, V> PartialEq for Pair<K, V> {
     fn eq(&self, other: &Self) -> bool {
@@ -47,26 +48,21 @@ impl<T, P: Fn(&T, &T) -> bool, C: Fn(&T, &T)> Predicate<T> for SwimSink<P, C> {
     }
 }
 
-// trait Index<K> {
-//     fn get(&self, key: K) -> usize;
-//     fn insert(&self, key: K, value: usize);
-// }
-
-pub struct IndexedHeap<K, V, SW, I> {
-    heap: Heap<Pair<K, V>, SW>,
-    // index: Vec<usize>, point to a place in the `heap`
-    keys: I, // point to a place in the `index`
-    // Idea is finding a corresponding index in `index` through keys as keys provides index by
-    // place in the heap
-}
-
 type PairSwimSink<K, V, C> = SwimSink<FnBox<Pair<K, V>>, C>;
 type SwimSinkCallback<K, V> = Box<dyn Fn(&Pair<K, V>, &Pair<K, V>)>;
 type TreePtr<V> = Rc<RefCell<Tree<Rc<V>, usize>>>;
 
+pub struct IndexedHeap<K, V> {
+    heap: Heap<Pair<K, V>, PairSwimSink<K, V, SwimSinkCallback<K, V>>>,
+    // index: Vec<usize>, point to a place in the `heap`
+    keys: TreePtr<V>, // point to a place in the `index`
+    // Idea is finding a corresponding index in `index` through keys as keys provides index by
+    // place in the heap
+}
+
 // TODO: figure out design without referece counters of values.
 // The container doesn't seem a data owner but a support container.
-impl<K: PartialOrd, V: 'static + Ord> IndexedHeap<K, V, PairSwimSink<K, V, SwimSinkCallback<K, V>>, TreePtr<V>> {
+impl<K: PartialOrd, V: 'static + Ord + fmt::Debug> IndexedHeap<K, V> {
     pub fn new(predicate: FnBox<Pair<K, V>>) -> Self {
         let tree: TreePtr<V> = Rc::new(RefCell::new(Tree::default()));
         let tree_clone = tree.clone();
@@ -74,6 +70,7 @@ impl<K: PartialOrd, V: 'static + Ord> IndexedHeap<K, V, PairSwimSink<K, V, SwimS
             heap: Heap{
                 data: Vec::new(),
                 sw: SwimSink(predicate, Box::new(move |left: &Pair<K, V>, right: &Pair<K, V>| {
+                    dbg!(&left.1, &right.1);
                     tree_clone.borrow_mut().swap(&left.1, &right.1);
                 })),
             },
@@ -109,6 +106,10 @@ impl<K: PartialOrd, V: 'static + Ord> IndexedHeap<K, V, PairSwimSink<K, V, SwimS
         self.heap.swim(index);
         self.heap.sink(index);
         Ok(())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.heap.is_empty()
     }
 }
 
@@ -155,7 +156,6 @@ mod tests {
 
         #[test]
         fn basic() {
-            assert!(false);
             let mut indexed_heap = IndexedHeap::new(Box::new(|x, y| x < y)); // max oriented
             let mut persons = vec![(0.1, "Jack".to_owned()), (0.3, "Alex".to_owned()), (0.5, "Jane".to_owned())];
             persons.iter().for_each(|(x, y)| indexed_heap.insert(x.clone(), y.clone()));
@@ -167,6 +167,17 @@ mod tests {
             assert_eq!((*indexed_heap.keys).borrow().items().len(), 3);
             persons.swap(1, 2);
             persons.into_iter().rev().for_each(|pair| assert_eq!(indexed_heap.pop(), Some(pair)));
+        }
+
+        #[test]
+        fn add_pop_change() {
+            let mut indexed_heap = IndexedHeap::new(Box::new(|x, y| x > y)); // min oriented
+            indexed_heap.insert(0.9, 1);
+            indexed_heap.insert(0.1, 2);
+            let second = indexed_heap.pop();
+            assert_eq!(second, Some((0.1, 2)));
+            let res = indexed_heap.change_key(&1, 0.3);
+            assert_eq!(res, Ok(()));
         }
     }
 }

@@ -1,5 +1,41 @@
 mod rbtree;
 mod heap;
+
 pub use rbtree::Tree;
 pub use heap::Heap;
-// pub use heap::IndexedHeap;
+pub use heap::IndexedHeap;
+use crate::list::List;
+
+pub struct Bag<T> {
+    inner: List<T>,
+}
+
+impl<T> Bag<T> {
+    pub fn push(&mut self, v: T) {
+        self.inner.push_back(v);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=&T> {
+        self.inner.iter()
+    }
+}
+
+impl<T> Default for Bag<T> {
+    fn default() -> Self {
+        Self { inner: List::new() }
+    }
+}
+
+pub struct Stack<T> {
+    inner: List<T>,
+}
+
+impl<T> Stack<T> {
+    pub fn push(&mut self, v: T) {
+        self.inner.push_back(v);
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        self.inner.pop_back()
+    }
+}

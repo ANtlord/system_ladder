@@ -12,6 +12,7 @@ use std::ops::Div;
 use std::ops::Sub;
 
 mod indexed_heap;
+pub use indexed_heap::IndexedHeap;
 #[cfg(test)]
 mod tests;
 
@@ -31,6 +32,10 @@ pub struct Heap<T, SW> {
 }
 
 impl<T: PartialOrd, SW> Heap<T, SW> {
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
     fn len(&self) -> usize {
         self.data.len()
     }
@@ -60,21 +65,22 @@ impl<T: PartialOrd, SW> Heap<T, SW> {
 }
 
 impl<T: PartialOrd> Heap<T, SwimSink<FnBox<T>>> {
-    fn max() -> Self {
+    pub fn max() -> Self {
         Self{
             data: Vec::new(),
             sw: SwimSink(Box::new(|a, b| a < b)),
         }
     }
 
-    fn min() -> Self {
+    pub fn min() -> Self {
         Self{
             data: Vec::new(),
             sw: SwimSink(Box::new(|a, b| a > b)),
         }
     }
 
-    fn new(predicate: FnBox<T>) -> Self {
+    // FIXME: this mustn't require PartialOrd as predicate compares items.
+    pub fn new(predicate: FnBox<T>) -> Self {
         Self{ 
             data: Vec::new(),
             sw: SwimSink(predicate),
@@ -87,15 +93,21 @@ impl<T: PartialOrd, SW: Swim<T> + Sink<T>> Heap<T, SW> {
         self.data.push(value);
         self.swim(self.data.len() - 1);
     }
-    
-    fn pop(&mut self) -> Option<T> {
+
+    pub fn pop(&mut self) -> Option<T> {
         if self.data.len() == 0 {
             None
         } else {
-            let ret = self.data.swap_remove(0);
+            let ret = self.swap_remove(0)?;
             self.sink(0);
             Some(ret)
         }
+    }
+
+    fn swap_remove(&mut self, pos: usize) -> Option<T> {
+        let n = self.data.len() - 1;
+        Swim::swap(&self.sw, &mut self.data, pos, n);
+        self.data.pop()
     }
 
     fn take(&mut self, val: &T) -> Option<T> {
@@ -104,7 +116,7 @@ impl<T: PartialOrd, SW: Swim<T> + Sink<T>> Heap<T, SW> {
     }
 
     fn remove(&mut self, pos: usize) -> T {
-        let ret = self.data.swap_remove(pos);
+        let ret = self.swap_remove(pos).unwrap();
         if pos < self.data.len() {
             self.sink(pos);
             self.swim(pos);
