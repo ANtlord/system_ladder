@@ -15,6 +15,8 @@ enum EdgeReference<'a> {
 #[derive(Clone)]
 struct EdgeLink<'a> {
     edge: &'a Edge,
+    // TODO: figure out a way to store all edges and thier relations in the array.
+    // May be like EdgeLink in kshortestpaths.rs?
     previous: Option<EdgeReference<'a>>,
     distance: f32,
 }
