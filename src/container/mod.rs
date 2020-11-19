@@ -6,11 +6,11 @@ pub use heap::Heap;
 pub use heap::IndexedHeap;
 use crate::list::List;
 
+// FIXME: make List able to provide iter_mut method
 pub struct Bag<T> {
     inner: List<T>,
 }
 
-// TODO: examine performance with linked list under the hood.
 impl<T> Bag<T> {
     pub fn push(&mut self, v: T) {
         self.inner.push_back(v);
