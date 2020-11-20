@@ -126,11 +126,15 @@ mod tests {
         assert_eq!(ff.marked, vec![true, false, false]);
     }
 
-    fn test_edge_flow(from_vertex: usize, to_vertex: usize, net: &FlowNetwork, expected_flow: f64) {
+    fn get_edge_flow(from_vertex: usize, to_vertex: usize, net: &FlowNetwork) -> f64 {
         let edges: Vec<_> = net.adj(from_vertex).filter_map(|x| net.edge(*x))
             .filter(|edge| edge.other(from_vertex) == Ok(to_vertex)).collect();
         assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].residual_capacity_to(from_vertex), Ok(expected_flow));
+        edges[0].residual_capacity_to(from_vertex).unwrap()
+    }
+
+    fn test_edge_flow(from_vertex: usize, to_vertex: usize, net: &FlowNetwork, expected_flow: f64) {
+        assert_eq!(get_edge_flow(from_vertex, to_vertex, net), expected_flow);
     }
 
     #[test]
@@ -172,16 +176,41 @@ mod tests {
         assert!(marked[2]);
         assert!(marked[3]);
         assert!(marked[6]);
-        // mincut edges
-        test_edge_flow(0, 1, &net, 10.);
-        test_edge_flow(2, 5, &net, 8.);
-        test_edge_flow(6, target, &net, 10.);
+        
+        test_edge_flow(source, 1, &net, 10.); // mincut edge
+        test_edge_flow(source, 2, &net, 5.);
+        test_edge_flow(source, 3, &net, 13.);
+
+        test_edge_flow(1, 2, &net, 0.);
+        test_edge_flow(2, 3, &net, 0.);
+
+        test_edge_flow(1, 5, &net, 2.);
+
+        test_edge_flow(1, 4, &net, 8.);
+        test_edge_flow(2, 5, &net, 8.); // mincut edge
+        test_edge_flow(3, 6, &net, 13.);
+
+        test_edge_flow(6, 2, &net, 3.);
+
+        test_edge_flow(4, 5, &net, 0.);
+        test_edge_flow(5, 6, &net, 0.);
+
+        test_edge_flow(4, target, &net, 8.);
+        test_edge_flow(5, target, &net, 10.);
+        test_edge_flow(6, target, &net, 10.); // mincut edge
 
         assert!(!marked[1]);
         assert!(!marked[4]);
         assert!(!marked[5]);
         assert!(!marked[7]);
-        assert_eq!(maxflow, 25.);
+
+        assert_eq!(maxflow, 28.);
+        let target_input_flow = get_edge_flow(4, target, &net) + get_edge_flow(5, target, &net) + get_edge_flow(6, target, &net);
+        assert_eq!(maxflow, target_input_flow);
+        let source_output_flow = get_edge_flow(source, 1, &net) + get_edge_flow(source, 2, &net) + get_edge_flow(source, 3, &net);
+        assert_eq!(maxflow, source_output_flow);
+        let mincut_flow = get_edge_flow(source, 1, &net) + get_edge_flow(2, 5, &net) + get_edge_flow(6, target, &net);
+        assert_eq!(maxflow, mincut_flow);
     }
 
     mod bipartial_dance {
