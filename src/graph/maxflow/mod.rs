@@ -8,7 +8,7 @@ type Edges<'a> = Vec<Option<&'a FlowEdge>>;
 
 struct FordFulkerson<'a> {
     edge_to: Edges<'a>,
-    maxflow: f64,
+    maxflow: f64, // this is mincut as well.
     marked: Vec<bool>, // every true stays with `from` (A cut), every false stays with `to` (B cut)
 }
 
@@ -260,7 +260,60 @@ mod tests {
 
     }
 
-    #[test]
-    fn closure_problem() {
+    mod closure_problem {
+        use super::*;
+
+        struct Edge {
+            from: usize,
+            to: usize,
+        }
+
+        fn build_flow_network(
+            source: usize,
+            target: usize,
+            edges: impl IntoIterator<Item=Edge>,
+            weights: &[f64],
+            size: usize,
+        ) -> FlowNetwork {
+            let mut flow_network = FlowNetwork::new(size);
+            edges.into_iter().for_each(|x| flow_network.add(FlowEdge::new(x.from, x.to, INFINITY)));
+            for vertex_index in 0 .. weights.len() {
+                let weight = weights[vertex_index];
+                if weight < 0. {
+                    flow_network.add(FlowEdge::new(vertex_index, target, weight.abs()));
+                } else {
+                    flow_network.add(FlowEdge::new(source, vertex_index, weight));
+                }
+            }
+
+            flow_network
+        }
+
+        #[test]
+        fn rombus() {
+            // assets/maxflow/rombus.dot
+            let edges = vec![
+                Edge { from: 0, to: 1 },
+                Edge { from: 0, to: 2 },
+                Edge { from: 1, to: 3 },
+                Edge { from: 2, to: 3 },
+            ];
+
+            let (source, target) = (4, 5);
+            let weights = vec![0.1, -10., 0.2, 0.3];
+            let mut net = build_flow_network(source, target, edges, &weights, 6);
+            let ff = FordFulkerson::new(&mut net, source, target).unwrap();
+            assert_eq!(ff.marked, vec![false, false, true, true, true, false]);
+            assert_eq!(ff.maxflow, 0.1);
+        }
+
+        #[test]
+        fn all_positive() { }
+
+        #[test]
+        fn all_negative() { }
+
+        #[test]
+        fn crystal() { }
     }
 }
