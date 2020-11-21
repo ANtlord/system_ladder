@@ -269,6 +269,10 @@ mod tests {
     }
 
     mod find_the_biggest_closure {
+        // theorem of k-regular bipartite graph. The theorem stands for
+        // such graph has a perfect matching.
+        // more or less clear prove of:
+        // https://math.stackexchange.com/questions/1805181/prove-that-a-k-regular-bipartite-graph-has-a-perfect-matching/1805195
         use super::*;
 
         struct Edge {
