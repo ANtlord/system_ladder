@@ -297,6 +297,10 @@ mod tests {
             flow_network
         }
 
+        fn apply_mask<'a, 'b: 'a, T>(iter: impl Iterator<Item=T> + 'a, mask: &'b [bool]) -> impl Iterator<Item=T> + 'a {
+            iter.enumerate().filter(move |(i, _)| mask[*i]).map(|(_, x)| x)
+        }
+
         #[test]
         fn rombus() {
             // assets/maxflow/find_the_biggest_closure/rombus.dot
@@ -314,7 +318,8 @@ mod tests {
             assert_eq!(ff.marked, vec![false, false, true, true, true, false]);
             assert_eq!(ff.maxflow, weights[0]);
             let expected_biggest_closure_total_weight = weights[2] + weights[3];
-            let biggest_closure_nodes: Vec<usize> = ff.marked[.. source].iter().enumerate().map(|(i, _)| i).collect();
+            let biggest_closure_nodes: Vec<usize> = ff.marked[.. source].iter().enumerate()
+                .filter(|(_, x)| **x).map(|(i, _)| i).collect();
             let biggest_closure_total_weight: f64 = biggest_closure_nodes.iter().map(|i| weights[*i]).sum();
             assert_eq!(biggest_closure_total_weight, expected_biggest_closure_total_weight);
             assert_eq!(biggest_closure_nodes, vec![2, 3]);
@@ -322,12 +327,23 @@ mod tests {
 
         #[test]
         fn all_positive() {
+            // assets/maxflow/find_the_biggest_closure/all_positive.dot
+            let (source, target) = (6, 7);
+            let weights = vec![0.9, 0.2, 0.1, 0.5, 0.6, 0.1];
+            let edges = vec![
+                Edge { from: 0, to: 1 },
+                Edge { from: 1, to: 2 },
+                Edge { from: 0, to: 3 },
+                Edge { from: 3, to: 4 },
+                Edge { from: 3, to: 5 },
+            ];
+
+            let mut net = build_flow_network(source, target, edges, &weights, 8);
+            let ff = FordFulkerson::new(&mut net, source, target).unwrap();
+            assert_eq!(ff.marked, vec![true, true, true, true, true, true, true, false]);
+            let expected_biggest_closure_total_weight: f64 = weights.iter().sum();
+            let biggest_closure_total_weight: f64 = apply_mask(weights.iter(), &ff.marked).sum();
+            assert_eq!(biggest_closure_total_weight, expected_biggest_closure_total_weight);
         }
-
-        #[test]
-        fn all_negative() { }
-
-        #[test]
-        fn crystal() { }
     }
 }
