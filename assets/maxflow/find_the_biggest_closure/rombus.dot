@@ -1,0 +1,37 @@
+digraph {
+    subgraph {
+        rankdir="LR";  // horizontal layout
+        i0 [label="0 (0.1)"];
+        i1 [label="1 (-10)"];
+        i2 [label="2 (0.2)", fillcolor="#aaaaaa", style=filled];
+        i3 [label="3 (0.3)", fillcolor="#aaaaaa", style=filled];
+
+        i0 -> {i1, i2} -> i3
+    }
+
+    subgraph {
+        0 [fillcolor="#ffffff", style=filled]
+        2 [fillcolor="#aaaaaa", style=filled]
+        3 [fillcolor="#aaaaaa", style=filled]
+        4 [fillcolor="#aaaaaa", style=filled, label="4 (source)", shape="rectangle"]
+        5 [label="5 (target)", shape="rectangle"]
+
+        subgraph cluster_source {
+            style=invis
+            4 -> 3 [label="0.3", constraint=false];
+            4 -> 2 [label="0.2", constraint=false];
+            4 -> 0 [label="0.1", constraint=false, color=blue];
+        }
+
+        subgraph cluster_target {
+            style=invis
+            1 -> 5 [label="10", constraint=false];
+        }
+
+        0 -> 1 [label="inf"];
+        0 -> 2 [label="inf"];
+        1 -> 3 [label="inf"];
+        2 -> 3 [label="inf"];
+    }
+
+}

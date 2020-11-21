@@ -223,44 +223,52 @@ mod tests {
             flow_network: FlowNetwork,
         }
 
-        fn build_data(men_women_count: usize, mutual_relationships_count: usize) -> Data {
-            assert!(men_women_count >= mutual_relationships_count,
-                "number of relationships can't be greated number of people, {}, {}", men_women_count, mutual_relationships_count);
-            let mut people = Vec::with_capacity(men_women_count + men_women_count);
-            (0 .. men_women_count + men_women_count).for_each(|x| people.push(x));
+        fn build_data(pair_count: usize, mutual_relationships_count: usize) -> Data {
+            assert!(pair_count >= mutual_relationships_count,
+                "number of relationships can't be greater number of people, {}, {}", pair_count, mutual_relationships_count);
+            let mut people = Vec::with_capacity(pair_count + pair_count);
+            (0 .. pair_count + pair_count).for_each(|x| people.push(x));
             let (source, target) = (people.len(), people.len() + 1);
             let network_size = people.len() + 2;
             let mut flow_network = FlowNetwork::new(network_size);
-            shuffle(&mut people[.. men_women_count]); // shuffle men
-            shuffle(&mut people[men_women_count ..]); // shuffle women
-            let (men, women) = people.split_at(men_women_count);
+            shuffle(&mut people[.. pair_count]); // shuffle men
+            shuffle(&mut people[pair_count ..]); // shuffle women
+            let (men, women) = people.split_at(pair_count);
             women.iter().for_each(|x| flow_network.add(FlowEdge::new(*x, target, 1.)));
-            men.iter().for_each(|x: &usize| {
-                flow_network.add(FlowEdge::new(source, *x, 1.));
-                for i in 0 .. mutual_relationships_count {
-                    flow_network.add(FlowEdge::new(*x, women[i], 1.));
-                }
+            men.iter().enumerate().for_each(|(i, man)| {
+                flow_network.add(FlowEdge::new(source, *man, 1.));
+                (i .. i + mutual_relationships_count).for_each(|j| {
+                    flow_network.add(FlowEdge::new(*man, women[j % pair_count], 1.))
+                });
             });
 
             Data { source, target, flow_network }
         }
 
         #[test]
-        fn test() {
-            for men_women_count in 1 .. 10 {
-                let mut data = build_data(men_women_count, 1);
-                assert_eq!(data.source, men_women_count * 2);
-                assert_eq!(data.target, men_women_count * 2 + 1);
-                let ff = assert_res(FordFulkerson::new(&mut data.flow_network, data.source, data.target));
-                assert!(ff.marked[data.source]);
-                assert!(!ff.marked[.. data.source].iter().all(|x| *x));
-                assert_eq!(ff.maxflow, 1.);
+        fn basic() {
+            // sample for 2 mutual_relationships_count = 2 and pair_count = 5 as
+            // assets/maxflow/bipartial_dance/basic.dot
+            for mutual_relationships_count in 1 .. 10 {
+                for pair_count in mutual_relationships_count .. 10 {
+                    let mut data = build_data(pair_count, mutual_relationships_count);
+                    assert_eq!(data.source, pair_count * 2);
+                    assert_eq!(data.target, pair_count * 2 + 1);
+                    let ff = assert_res(FordFulkerson::new(&mut data.flow_network, data.source, data.target));
+                    let FordFulkerson{marked, maxflow, ..} = ff;
+                    assert!(marked[data.source]);
+                    let are_all_people_have_pair = !marked[.. data.source].iter().all(|x| *x);
+                    assert!(are_all_people_have_pair);
+                    assert_eq!(data.flow_network.adj(data.source).count(), pair_count);
+                    assert_eq!(data.flow_network.adj(data.target).count(), pair_count);
+                    assert_eq!(maxflow, pair_count as f64);
+                }
             }
         }
 
     }
 
-    mod closure_problem {
+    mod find_the_biggest_closure {
         use super::*;
 
         struct Edge {
@@ -291,7 +299,9 @@ mod tests {
 
         #[test]
         fn rombus() {
-            // assets/maxflow/rombus.dot
+            // assets/maxflow/find_the_biggest_closure/rombus.dot
+            let (source, target) = (4, 5);
+            let weights = vec![0.1, -10., 0.2, 0.3];
             let edges = vec![
                 Edge { from: 0, to: 1 },
                 Edge { from: 0, to: 2 },
@@ -299,12 +309,14 @@ mod tests {
                 Edge { from: 2, to: 3 },
             ];
 
-            let (source, target) = (4, 5);
-            let weights = vec![0.1, -10., 0.2, 0.3];
             let mut net = build_flow_network(source, target, edges, &weights, 6);
             let ff = FordFulkerson::new(&mut net, source, target).unwrap();
             assert_eq!(ff.marked, vec![false, false, true, true, true, false]);
             assert_eq!(ff.maxflow, 0.1);
+            let expected_biggest_closure_total_weight = weights[2] + weights[3];
+            let biggest_closure_total_weight: f64 = weights.iter().enumerate()
+                .filter(|(i, x)| ff.marked[*i]).map(|(_, x)| x).sum();
+            assert_eq!(biggest_closure_total_weight, expected_biggest_closure_total_weight);
         }
 
         #[test]
