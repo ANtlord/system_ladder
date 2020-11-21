@@ -312,15 +312,17 @@ mod tests {
             let mut net = build_flow_network(source, target, edges, &weights, 6);
             let ff = FordFulkerson::new(&mut net, source, target).unwrap();
             assert_eq!(ff.marked, vec![false, false, true, true, true, false]);
-            assert_eq!(ff.maxflow, 0.1);
+            assert_eq!(ff.maxflow, weights[0]);
             let expected_biggest_closure_total_weight = weights[2] + weights[3];
-            let biggest_closure_total_weight: f64 = weights.iter().enumerate()
-                .filter(|(i, x)| ff.marked[*i]).map(|(_, x)| x).sum();
+            let biggest_closure_nodes: Vec<usize> = ff.marked[.. source].iter().enumerate().map(|(i, _)| i).collect();
+            let biggest_closure_total_weight: f64 = biggest_closure_nodes.iter().map(|i| weights[*i]).sum();
             assert_eq!(biggest_closure_total_weight, expected_biggest_closure_total_weight);
+            assert_eq!(biggest_closure_nodes, vec![2, 3]);
         }
 
         #[test]
-        fn all_positive() { }
+        fn all_positive() {
+        }
 
         #[test]
         fn all_negative() { }
