@@ -14,6 +14,8 @@ pub struct List<T> {
 }
 
 // TODO: implement drop
+// TODO: implement iter_mut
+// TODO: implement len
 impl<T> List<T> {
     pub fn cursor(&mut self) -> Cursor<T> {
         return Cursor::new(&self.head)

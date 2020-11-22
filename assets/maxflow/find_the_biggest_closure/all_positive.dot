@@ -1,0 +1,33 @@
+digraph {
+    subgraph {
+        i0 [label="0 (0.9)"]
+        i1 [label="1 (0.2)"] 
+        i2 [label="2 (0.1)"]
+        i3 [label="3 (0.5)"]
+        i4 [label="4 (0.6)"]
+        i5 [label="5 (0.1)"]
+
+        i0 -> i1 -> i2
+        i0 -> i3 -> i4
+        i3 -> i5
+    }
+
+    subgraph {
+        subgraph cluster_source {
+            source -> 0 [label="0.9"]
+            source -> 1 [label="0.2"]
+            source -> 2 [label="0.1"]
+            source -> 3 [label="0.5"]
+            source -> 4 [label="0.6"]
+            source -> 5 [label="0.1"]
+        }
+
+        subgraph cluster_inner {
+            0 -> 1 -> 2 [label="inf"]
+            0 -> 3 -> 4 [label="inf"]
+            3 -> 5 [label="inf"]
+        }
+
+        target
+    }
+}
