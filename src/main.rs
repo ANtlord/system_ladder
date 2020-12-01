@@ -46,8 +46,8 @@ impl<T> Exit<T> for Option<T> {
 }
 
 fn main() {
-    let ret: Vec<u32> = vec![0; 3].into_iter().map(|_| random()).collect();
-    println!("{:?}", ret);
+    //let ret: Vec<u32> = vec![0; 3].into_iter().map(|_| random()).collect();
+    //println!("{:?}", ret);
     // let filename = args().skip(1).next().or_exit("Point filename");
     // println!("{}", filename);
     // let filename = args().skip(1).next().expect("Point filename");
