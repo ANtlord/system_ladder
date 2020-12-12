@@ -104,18 +104,6 @@ fn make_children<'a>() -> [Child<'a>; 256] {
     }
 }
 
-// fn next<'b, 'a: 'b>(node: &'b mut Node<'a>, child_key: usize) -> &'b mut Node<'a> {
-//     let ptr = node as *mut Node;
-//
-//     unsafe {
-//         if let Some(ref mut inner) = (*ptr).nodes.get_mut(child_key).unwrap().0 {
-//             inner
-//         } else {
-//             mem::transmute(ptr)
-//         }
-//     }
-// }
-//
 struct ActivePoint<'a> {
     node: NonNull<Node<'a>>,
     edge: Option<u8>,
@@ -129,14 +117,9 @@ impl<'a> ActivePoint<'a> {
         Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root }
     }
 
-    fn key(&self, current_end: usize) -> u8 {
+    fn has_child(&self, key: u8, current_end: usize) -> bool {
         let data_bytes = self.root.data.as_bytes();
-        data_bytes[current_end - self.length]
-    }
-
-    fn has_child(&self, /*key: u8,*/ current_end: usize) -> bool {
-        let data_bytes = self.root.data.as_bytes();
-        let key = data_bytes[current_end - self.length];
+        let key = self.edge.unwrap_or(key);
         let noderef = unsafe { self.node.as_ref() };
         if let Some(ref child) = noderef.nodes[key as usize].0 {
             return data_bytes[child.from + self.length] == data_bytes[current_end];
@@ -145,17 +128,23 @@ impl<'a> ActivePoint<'a> {
         return false;
     }
 
-    fn follow_key(&mut self, key: u8) {
-        // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
+    fn update(&mut self, key: u8) {
         self.edge = self.edge.or(Some(key));
         self.length += 1;
+    }
+
+    // move further if the active point is in the end of the its edge.
+    fn try_follow_edge(&mut self) {
+        // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
+        let key = self.edge.take().unwrap();
         let noderef = unsafe { self.node.as_mut() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
         if self.length == node.len() {
             self.length = 0;
-            self.edge = None;
             dbg!(&noderef, node, key as char);
             self.node = NonNull::from(node.as_ref());
+        } else {
+            self.edge = Some(key);
         }
         // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
     }
@@ -241,23 +230,16 @@ impl<'a> SuffixTree<'a> {
         let mut remainder = 1;
         for byte in input.as_ref().as_bytes().iter() {
             let child_key = *byte as usize;
-            dbg!(*byte as char);
             let mut last_created_node = Link::default();
-            // unsafe {
-            //     dbg!(active_point.root.as_ref() as *const _, &active_point.root.nodes[b'a' as usize].0);
-            // }
-            if dbg!(active_point.has_child(*current_end.borrow())) {
-                // when try to put `abx` it must find `ab` node of the root.
-                let key = active_point.key(*current_end.borrow());
-                active_point.follow_key(key);
+            if dbg!(active_point.has_child(*byte, *current_end.borrow())) {
+                active_point.update(*byte);
+                active_point.try_follow_edge();
                 remainder += 1;
                 unwritted_node_count += 1;
             } else {
                 while remainder > 1 {
                     let input = input.as_ref();
                     let active_edge_key = active_point.edge.unwrap() as usize;
-                    dbg!(active_point.node.as_ptr(), active_point.root.as_ref() as *const _);
-                    //dbg!(active_point.root.as_ref() as *const _);
                     let inserted_node = active_point.split_node(active_edge_key, current_end.clone());
                     let inserted_node_link = inserted_node.into();
                     last_created_node.set_suffix(inserted_node_link);
@@ -269,7 +251,6 @@ impl<'a> SuffixTree<'a> {
                     } else {
                         active_point.follow_suffix();
                     }
-                    dbg!(active_point.node.as_ptr(), active_point.root.as_ref() as *const _);
 
                     remainder -= 1;
                 }
@@ -348,7 +329,7 @@ mod tests {
                 suffix_link: Link::default(),
             })
         }))
-
+        
     }
 
     struct NodesBuild<'a> {
