@@ -149,6 +149,16 @@ impl<'a> ActivePoint<'a> {
         // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
     }
 
+    fn add_node(&mut self, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
+        let mut noderef = unsafe { self.node.as_mut() };
+        let key = self.root.data.as_bytes()[*current_end.borrow()];
+        noderef.nodes[key as usize] = Child::new(
+            self.root.data, *current_end.borrow(), Rc::downgrade(&current_end),
+        );
+
+        noderef
+    }
+
     fn split_node(&mut self, at: usize, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
         let mut noderef = unsafe { self.node.as_mut() };
         // dbg!(at as u8 as char, noderef as *const _, &noderef.nodes[at].0, &self.root);
@@ -156,13 +166,6 @@ impl<'a> ActivePoint<'a> {
         let new_node = split_node(*old_node, self.root.data, self.length, current_end.clone());
         noderef.nodes[at] = new_node.into();
         noderef.nodes[at].0.as_ref().unwrap()
-    }
-
-    fn add(&mut self, at: usize, node: Node<'a>) {
-        unsafe {
-            self.node.as_mut().nodes[at] = node.into();
-            // dbg!(at as u8 as char, self.node.as_ptr() as *const _, self.root.as_ref() as *const _, &self.root.nodes[at].0);
-        }
     }
 
     fn follow_suffix(&mut self) {
@@ -235,35 +238,45 @@ impl<'a> SuffixTree<'a> {
                 active_point.update(*byte);
                 active_point.try_follow_edge();
                 remainder += 1;
-                unwritted_node_count += 1;
+                // unwritted_node_count += 1;
             } else {
                 while remainder > 1 {
                     let input = input.as_ref();
-                    let active_edge_key = active_point.edge.unwrap() as usize;
-                    let inserted_node = active_point.split_node(active_edge_key, current_end.clone());
-                    let inserted_node_link = inserted_node.into();
+                    // let active_edge_key = active_point.edge.unwrap() as usize;
+                    let inserted_node_link = match active_point.edge {
+                        Some(key) => active_point.split_node(key as usize, current_end.clone()),
+                        _ => active_point.add_node(current_end.clone()),
+                    }.into();
+
+                    // let inserted_node = ;
+                    // let inserted_node_link = inserted_node.into();
+                    // r2
                     last_created_node.set_suffix(inserted_node_link);
+
                     last_created_node = inserted_node_link;
-                    if dbg!(active_point.is_at_root()) {
+                    if dbg!(active_point.is_at_root()) { // r1
                         active_point.length -= 1;
                         let current_end_ptr = current_end.borrow();
                         active_point.edge = Some(input.as_bytes()[*current_end_ptr - active_point.length]);
-                    } else {
+                    } else { // r3
                         active_point.follow_suffix();
                     }
 
                     remainder -= 1;
                 }
 
-                // active_point.node.nodes[child_key] = Child::new(input.as_ref(), count, Rc::downgrade(&current_end));
-                active_point.add(child_key, Node::new(input.as_ref(), count, Rc::downgrade(&current_end)));
+                active_point.add_node(current_end.clone());
                 active_point.edge = None;
-                unwritted_node_count = 0;
+                // unwritted_node_count = 0;
             }
 
             let mut current_end_ptr = current_end.borrow_mut();
             *current_end_ptr = *current_end_ptr + 1;
             count += 1;
+        }
+
+        while remainder > 1 {
+            remainder -= 1;
         }
 
         // dbg!(&current_end, unwritted_node_count);
@@ -582,7 +595,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn three_repeats() {
         let data = "abcabxabcd";
@@ -727,6 +739,99 @@ mod tests {
             &select_ref(&tree.root.nodes, &[b'b', b'c']).nodes,
             &select_ref(&expected_tree.root.nodes, &[b'b', b'c']).nodes,
         );
+    }
+
+    mod inner_extension {
+        use super::*;
+
+        #[test]
+        fn without_suffix() {
+            let data = "abcadak";
+            let tree = SuffixTree::new(data);
+            let expected_endptr = Rc::new(RefCell::new(7));
+
+            let mut expected_tree = SuffixTree{
+                root: Node {
+                    data,
+                    from: 0,
+                    to: Position::Ptr(Weak::new()),
+                    nodes: NodesBuild::new()
+                        .add('a', Node{
+                            data,
+                            from: 0,
+                            to: Position::Data(1),
+                            suffix_link: Link::default(),
+                            nodes: NodesBuild::new()
+                                .add('k', Node{
+                                    data,
+                                    from: 6,
+                                    to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                    nodes: make_children(),
+                                    suffix_link: Link::default(),
+                                })
+                                .add('d', Node{
+                                    data,
+                                    from: 4,
+                                    to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                    nodes: make_children(),
+                                    suffix_link: Link::default(),
+                                })
+                                .add('b', Node{
+                                    data,
+                                    from: 1,
+                                    to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                    nodes: make_children(),
+                                    suffix_link: Link::default(),
+                                })
+                                .run(),
+                        })
+                        .add('b', Node{
+                            data,
+                            from: 1,
+                            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                            suffix_link: Link::default(),
+                            nodes: make_children(),
+                        })
+                        .add('c', Node{
+                            data,
+                            from: 2,
+                            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                            suffix_link: Link::default(),
+                            nodes: make_children(),
+                        })
+                        .add('d', Node{
+                            data,
+                            from: 4,
+                            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                            suffix_link: Link::default(),
+                            nodes: make_children(),
+                        })
+                        .add('k', Node{
+                            data,
+                            from: 6,
+                            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                            suffix_link: Link::default(),
+                            nodes: make_children(),
+                        })
+                        .run(),
+                    suffix_link: Link::default(),
+                },
+                to: expected_endptr,
+            };
+
+            test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
+        }
+
+        #[test]
+        fn with_suffix() {
+        }
+    }
+
+    #[test]
+    fn undefined_repeat() {
+        let data = "abab";
+        let tree = SuffixTree::new(data);
+        let expected_endptr = Rc::new(RefCell::new(3));
     }
 
     #[test]
