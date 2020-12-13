@@ -227,59 +227,46 @@ fn try_next<'out, 'a: 'out>(from: &'a mut Node<'a>, key: usize) -> &'out mut Nod
 impl<'a> SuffixTree<'a> {
     fn new<T: AsRef<str> + ?Sized>(input: &'a T) -> Self {
         let current_end = Rc::new(RefCell::new(0usize));
-        let mut count = 0;
         let mut unwritted_node_count = 0;
         let mut active_point = ActivePoint::new(input.as_ref());
         let mut remainder = 1;
-        for byte in input.as_ref().as_bytes().iter() {
-            let child_key = *byte as usize;
+        for (i, byte) in input.as_ref().as_bytes().iter().enumerate() {
+            *current_end.borrow_mut() = i;
+            dbg!(*current_end.borrow());
             let mut last_created_node = Link::default();
             if dbg!(active_point.has_child(*byte, *current_end.borrow())) {
                 active_point.update(*byte);
                 active_point.try_follow_edge();
                 remainder += 1;
-                // unwritted_node_count += 1;
-            } else {
-                while remainder > 1 {
-                    let input = input.as_ref();
-                    // let active_edge_key = active_point.edge.unwrap() as usize;
-                    let inserted_node_link = match active_point.edge {
-                        Some(key) => active_point.split_node(key as usize, current_end.clone()),
-                        _ => active_point.add_node(current_end.clone()),
-                    }.into();
-
-                    // let inserted_node = ;
-                    // let inserted_node_link = inserted_node.into();
-                    // r2
-                    last_created_node.set_suffix(inserted_node_link);
-
-                    last_created_node = inserted_node_link;
-                    if dbg!(active_point.is_at_root()) { // r1
-                        active_point.length -= 1;
-                        let current_end_ptr = current_end.borrow();
-                        active_point.edge = Some(input.as_bytes()[*current_end_ptr - active_point.length]);
-                    } else { // r3
-                        active_point.follow_suffix();
-                    }
-
-                    remainder -= 1;
-                }
-
-                active_point.add_node(current_end.clone());
-                active_point.edge = None;
-                // unwritted_node_count = 0;
+                continue;
             }
 
-            let mut current_end_ptr = current_end.borrow_mut();
-            *current_end_ptr = *current_end_ptr + 1;
-            count += 1;
+            while remainder > 1 {
+                let input = input.as_ref();
+                let inserted_node_link = match active_point.edge {
+                    Some(key) => active_point.split_node(key as usize, current_end.clone()),
+                    _ => active_point.add_node(current_end.clone()),
+                }.into();
+
+                // r2
+                last_created_node.set_suffix(inserted_node_link);
+                last_created_node = inserted_node_link;
+                if dbg!(active_point.is_at_root()) { // r1
+                    active_point.length -= 1;
+                    let current_end_ptr = current_end.borrow();
+                    active_point.edge = Some(input.as_bytes()[*current_end_ptr - active_point.length]);
+                } else { // r3
+                    active_point.follow_suffix();
+                }
+
+                remainder -= 1;
+            }
+
+            active_point.add_node(current_end.clone());
+            active_point.edge = None;
         }
 
-        while remainder > 1 {
-            remainder -= 1;
-        }
-
-        // dbg!(&current_end, unwritted_node_count);
+        *current_end.borrow_mut() += 1;
         Self{root: *active_point.root, to: current_end}
     }
 }
