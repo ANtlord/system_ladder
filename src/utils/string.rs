@@ -9,6 +9,8 @@ use std::mem;
 use std::fmt;
 use crate::tprintln;
 
+const END: u8 = b'0';
+
 /// Ukkonen's algorithm
 struct SuffixTree<'a> {
     root: Node<'a>,
@@ -118,6 +120,10 @@ impl<'a> ActivePoint<'a> {
     }
 
     fn has_child(&self, key: u8, current_end: usize) -> bool {
+        if key == END {
+            return false;
+        }
+
         let data_bytes = self.root.data.as_bytes();
         let key = self.edge.unwrap_or(key);
         let noderef = unsafe { self.node.as_ref() };
@@ -149,23 +155,58 @@ impl<'a> ActivePoint<'a> {
         // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
     }
 
-    fn add_node(&mut self, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
+    fn add_node(&mut self, for_letter: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
         let mut noderef = unsafe { self.node.as_mut() };
-        let key = self.root.data.as_bytes()[*current_end.borrow()];
-        noderef.nodes[key as usize] = Child::new(
+        let loc = *current_end.borrow();
+        noderef.nodes[for_letter as usize] = Child::new(
             self.root.data, *current_end.borrow(), Rc::downgrade(&current_end),
         );
 
         noderef
     }
 
-    fn split_node(&mut self, at: usize, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
-        let mut noderef = unsafe { self.node.as_mut() };
+    // `at` points to the node to split.
+    fn split_node(&mut self, at: u8, for_letter: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
         // dbg!(at as u8 as char, noderef as *const _, &noderef.nodes[at].0, &self.root);
-        let old_node = noderef.nodes[at].0.take().unwrap();
-        let new_node = split_node(*old_node, self.root.data, self.length, current_end.clone());
+        let at = at as usize;
+        let old_node = {
+            let mut noderef = unsafe { self.node.as_mut() };
+            noderef.nodes[at].0.take().unwrap()
+        };
+
+        let new_node = self._split_node(*old_node, for_letter, current_end);
+        let mut noderef = unsafe { self.node.as_mut() };
         noderef.nodes[at] = new_node.into();
         noderef.nodes[at].0.as_ref().unwrap()
+    }
+
+    fn _split_node(&self, node: Node<'a>, for_letter: u8, current_end: Rc<RefCell<usize>>) -> Node<'a> {
+        let input = self.root.data;
+        let active_length = self.length;
+        // if node.from == 0 {
+        //     dbg!(&node, active_length);
+        // }
+
+        let to = match node.to {
+            Position::Ptr(ref ptr) => ptr.upgrade().as_ref().unwrap().borrow().clone(),
+            Position::Data(ref x) => *x,
+        };
+
+        debug_assert!(active_length < to);
+
+        let current_end_ptr = current_end.borrow();
+        let from = node.from;
+        let mut new_node = Node::inner(input, from, from + active_length);
+        let key = from + active_length;
+        new_node.nodes[input.as_bytes()[key] as usize] = Child::new(
+            input, key, Rc::downgrade(&current_end),
+        );
+
+        new_node.nodes[for_letter as usize] = Child::new(
+            input, *current_end_ptr, Rc::downgrade(&current_end),
+        );
+
+        new_node
     }
 
     fn follow_suffix(&mut self) {
@@ -182,57 +223,14 @@ impl<'a> ActivePoint<'a> {
     }
 }
 
-fn split_node<'a>(
-    node: Node<'a>,
-    input: &'a str,
-    active_length: usize,
-    current_end: Rc<RefCell<usize>>,
-) -> Node<'a> {
-    // if node.from == 0 {
-    //     dbg!(&node, active_length);
-    // }
-
-    let to = match node.to {
-        Position::Ptr(ref ptr) => ptr.upgrade().as_ref().unwrap().borrow().clone(),
-        Position::Data(ref x) => *x,
-    };
-
-    debug_assert!(active_length < to);
-
-    let current_end_ptr = current_end.borrow();
-    let from = node.from;
-    let mut new_node = Node::inner(input, from, from + active_length);
-    let key = from + active_length;
-    new_node.nodes[input.as_bytes()[key] as usize] = Child::new(
-        input, key, Rc::downgrade(&current_end),
-    );
-
-    new_node.nodes[input.as_bytes()[*current_end_ptr] as usize] = Child::new(
-        input, *current_end_ptr, Rc::downgrade(&current_end),
-    );
-
-    new_node
-}
-
-fn try_next<'out, 'a: 'out>(from: &'a mut Node<'a>, key: usize) -> &'out mut Node<'a> {
-    if let Some(ref mut node) = from.nodes[key].0 {
-        node
-    } else {
-        unsafe {
-            mem::transmute(from)
-        }
-    }
-}
-
 impl<'a> SuffixTree<'a> {
     fn new<T: AsRef<str> + ?Sized>(input: &'a T) -> Self {
         let current_end = Rc::new(RefCell::new(0usize));
         let mut unwritted_node_count = 0;
         let mut active_point = ActivePoint::new(input.as_ref());
         let mut remainder = 1;
-        for (i, byte) in input.as_ref().as_bytes().iter().enumerate() {
+        for (i, byte) in input.as_ref().as_bytes().iter().chain(&[END]).enumerate() {
             *current_end.borrow_mut() = i;
-            dbg!(*current_end.borrow());
             let mut last_created_node = Link::default();
             if dbg!(active_point.has_child(*byte, *current_end.borrow())) {
                 active_point.update(*byte);
@@ -242,31 +240,40 @@ impl<'a> SuffixTree<'a> {
             }
 
             while remainder > 1 {
+                // dbg!(*active_point.edge.as_ref().unwrap() as char);
                 let input = input.as_ref();
                 let inserted_node_link = match active_point.edge {
-                    Some(key) => active_point.split_node(key as usize, current_end.clone()),
-                    _ => active_point.add_node(current_end.clone()),
+                    Some(key) => active_point.split_node(key, *byte, current_end.clone()),
+                    _ => active_point.add_node(*byte, current_end.clone()),
                 }.into();
 
                 // r2
                 last_created_node.set_suffix(inserted_node_link);
+
                 last_created_node = inserted_node_link;
                 if dbg!(active_point.is_at_root()) { // r1
                     active_point.length -= 1;
+                    dbg!(active_point.length, remainder);
                     let current_end_ptr = current_end.borrow();
-                    active_point.edge = Some(input.as_bytes()[*current_end_ptr - active_point.length]);
+                    let loc = *current_end_ptr - active_point.length;
+                    active_point.edge = Some(if input.len() == loc {
+                        END
+                    } else {
+                        input.as_bytes()[loc]
+                    });
                 } else { // r3
                     active_point.follow_suffix();
                 }
 
                 remainder -= 1;
+                // dbg!(*active_point.edge.as_ref().unwrap() as char);
             }
 
-            active_point.add_node(current_end.clone());
+            active_point.add_node(*byte, current_end.clone());
             active_point.edge = None;
         }
 
-        *current_end.borrow_mut() += 1;
+        // *current_end.borrow_mut() += 1;
         Self{root: *active_point.root, to: current_end}
     }
 }
@@ -390,6 +397,16 @@ mod tests {
         }
     }
 
+    fn end_node(data: &str, expected_endptr: Rc<RefCell<usize>>) -> Node {
+        Node{
+            data,
+            from: data.len(),
+            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+            suffix_link: Link::default(),
+            nodes: NodesBuild::new().run(),
+        }
+    }
+
     #[test]
     fn no_repeats() {
         let data = "abc";
@@ -401,6 +418,7 @@ mod tests {
                 from: 0,
                 to: Position::Ptr(Weak::new()),
                 nodes: NodesBuild::new()
+                    .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         data,
                         from: 0,
@@ -428,15 +446,7 @@ mod tests {
             to: Rc::new(RefCell::new(data.len())),
         };
 
-        for i in 0 .. 256 {
-            let key = i as u8;
-            match key as char {
-                'a' | 'b' | 'c' => assert_eq!(
-                    tree.root.nodes[i].0, expected_tree.root.nodes[i].0, "key: {}", key as char,
-                ),
-                _ => assert!(tree.root.nodes[i].0.is_none(), "key = {}", key as char),
-            }
-        }
+        test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
     }
 
     fn get_validated_node<'b, 'a: 'b>(node: &'a Node<'b>, key: u8, expected_from: usize, expected_to: usize) -> Option<&'a Node<'b>> {
@@ -516,6 +526,7 @@ mod tests {
                 from: 0,
                 to: Position::Ptr(Weak::new()),
                 nodes: NodesBuild::new()
+                    .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         data,
                         from: 0,
@@ -650,6 +661,7 @@ mod tests {
                 from: 0,
                 to: Position::Ptr(Weak::new()),
                 nodes: NodesBuild::new()
+                    .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         data,
                         from: 0,
@@ -743,6 +755,7 @@ mod tests {
                     from: 0,
                     to: Position::Ptr(Weak::new()),
                     nodes: NodesBuild::new()
+                        .add(END as char, end_node(data, expected_endptr.clone()))
                         .add('a', Node{
                             data,
                             from: 0,
@@ -818,7 +831,73 @@ mod tests {
     fn undefined_repeat() {
         let data = "abab";
         let tree = SuffixTree::new(data);
-        let expected_endptr = Rc::new(RefCell::new(3));
+        let expected_endptr = Rc::new(RefCell::new(data.len()));
+        let mut expected_tree = SuffixTree{
+            root: Node {
+                data,
+                from: 0,
+                to: Position::Ptr(Weak::new()),
+                nodes: NodesBuild::new()
+                    .add(END as char, end_node(data, expected_endptr.clone()))
+                    .add('a', Node{
+                        data,
+                        from: 0,
+                        to: Position::Data(2),
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new()
+                            .add('a', Node{
+                                data,
+                                from: 2,
+                                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                suffix_link: Link::default(),
+                                nodes: make_children(),
+                            })
+                            .add(END as char, Node{
+                                data,
+                                from: 4,
+                                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                suffix_link: Link::default(),
+                                nodes: make_children(),
+                            }).run(),
+                    })
+                    .add('b', Node{
+                        data,
+                        from: 1,
+                        to: Position::Data(2),
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new()
+                            .add('a', Node{
+                                data,
+                                from: 2,
+                                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                suffix_link: Link::default(),
+                                nodes: make_children(),
+                            })
+                            .add(END as char, Node{
+                                data,
+                                from: 4,
+                                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                suffix_link: Link::default(),
+                                nodes: make_children(),
+                            }).run(),
+                    })
+                    .run(),
+                suffix_link: Link::default(),
+            },
+            to: Rc::new(RefCell::new(data.len())),
+        };
+
+        link_inner_nodes(&mut expected_tree.root.nodes, &[b'a'], &[b'b']);
+        test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
+        test_nodes(
+            &select_ref(&tree.root.nodes, &[b'a']).nodes,
+            &select_ref(&expected_tree.root.nodes, &[b'a']).nodes,
+        );
+
+        test_nodes(
+            &select_ref(&tree.root.nodes, &[b'b']).nodes,
+            &select_ref(&expected_tree.root.nodes, &[b'b']).nodes,
+        );
     }
 
     #[test]
