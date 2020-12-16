@@ -80,15 +80,17 @@ impl<'a> Node<'a> {
     }
 
     fn len(&self) -> usize {
-        let to = match &self.to {
+        self.finished_at() - self.from
+    }
+
+    fn finished_at(&self) -> usize {
+        match &self.to {
             Position::Data(x) => *x,
             Position::Ptr(weak) => match weak.upgrade() {
                 Some(x) => x.borrow().clone(),
-                _ => panic!(),
+                _ => panic!("unexpected state of the node"),
             }
-        };
-
-        to - self.from
+        }
     }
 }
 
@@ -192,11 +194,7 @@ fn split_node<'a>(
     //     dbg!(&node, active_length);
     // }
 
-    let to = match node.to {
-        Position::Ptr(ref ptr) => ptr.upgrade().as_ref().unwrap().borrow().clone(),
-        Position::Data(ref x) => *x,
-    };
-
+    let to = node.finished_at();
     debug_assert!(active_length < to);
 
     let current_end_ptr = current_end.borrow();
@@ -268,6 +266,31 @@ impl<'a> SuffixTree<'a> {
 
         *current_end.borrow_mut() += 1;
         Self{root: *active_point.root, to: current_end}
+    }
+
+    fn find(&self, pattern: &str) -> Option<usize> {
+        let mut count = 0;
+        let mut pattern_iter = pattern.as_bytes().iter();
+        let mut node: &Node = &self.root.nodes.get(*pattern_iter.next()? as usize)?.0.as_ref()?.as_ref();
+        dbg!(&self.root.data[node.from .. node.finished_at()]);
+        let mut node_byte_count = 1;
+        for byte in pattern_iter {
+            let mut text_index = node.from + node_byte_count;
+            if text_index >= node.finished_at() {
+                node = node.nodes.get(*byte as usize)?.0.as_ref()?;
+                node_byte_count = 0;
+                text_index = node.from;
+            }
+
+            if dbg!(self.root.data.as_bytes()[text_index]) != dbg!(*byte) {
+                dbg!(node, &self.root.data[node.from .. node.finished_at()]);
+                return None;
+            }
+
+            node_byte_count += 1;
+        }
+
+        Some(node.from + node_byte_count - pattern.len())
     }
 }
 
