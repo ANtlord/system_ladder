@@ -841,6 +841,42 @@ mod tests {
         #[test]
         fn with_suffix() {
         }
+
+        #[test]
+        fn pair_of_letters() {
+            let data = "dd";
+            let tree = SuffixTree::new(data);
+            let expected_endptr = Rc::new(RefCell::new(data.len()));
+
+            let mut expected_tree = SuffixTree{
+                root: Node {
+                    data,
+                    from: 0,
+                    to: ROOT_TO,
+                    nodes: NodesBuild::new()
+                        .add(END as char, end_node(data, expected_endptr.clone()))
+                        .add('d', Node{
+                            data,
+                            from: 0,
+                            to: 1,
+                            suffix_link: Link::default(),
+                            nodes: NodesBuild::new()
+                                .add(END as char, end_node(data, expected_endptr.clone()))
+                                .add('d', Node {
+                                    data,
+                                    from: 1,
+                                    to: data.len(),
+                                    suffix_link: Link::default(),
+                                    nodes: make_children(),
+                                }).run(),
+                        }).run(),
+                        suffix_link: Link::default(),
+                },
+                to: expected_endptr,
+            };
+
+            test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
+        }
     }
 
     #[test]
@@ -996,7 +1032,6 @@ mod tests {
     //         //    to: Rc::new(RefCell::new(data.len())),
     //         //};
 
-    //         test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
     //         // let tree = SuffixTree::new("dummy and indus");
     //         // dbg!(b"dummy");
     //         // let position = tree.find("dum");
