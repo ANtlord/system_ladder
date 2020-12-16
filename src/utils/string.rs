@@ -11,6 +11,12 @@ use crate::tprintln;
 
 const END: u8 = b'0';
 
+static LOREM_IPSUM: &str = r#"
+Lorem Ipsum is simply dummy text of the printing and typesetting industry.
+"#;
+
+// Lorem Ipsum has been the industry's standard dummy text ever since the 1500s,
+// when an unknown printer took a galley of type and scrambled it to make a type specimen book.
 /// Ukkonen's algorithm
 struct SuffixTree<'a> {
     root: Node<'a>,
@@ -60,21 +66,25 @@ enum Position {
     Data(usize),
 }
 
+const ROOT_TO: usize = 0;
+
 struct Node<'a> {
     data: &'a str,
     from: usize,
-    to: Position,
+    to: usize, // 0 for root
     nodes: [Child<'a>; 256],
     suffix_link: Link<'a>,
 }
 
 impl<'a> Node<'a> {
     fn new(data: &'a str, from: usize, to: Weak<RefCell<usize>>) -> Self {
-        Self {data, from, to: Position::Ptr(to), nodes: make_children(), suffix_link: Link::default()}
+        let to = *to.upgrade().unwrap().borrow();
+        //debug_assert_ne!(from, to);
+        Self {data, from, to, nodes: make_children(), suffix_link: Link::default()}
     }
 
     fn inner(data: &'a str, from: usize, to: usize) -> Self {
-        Self {data, from, to: Position::Data(to), nodes: make_children(), suffix_link: Link::default()}
+        Self {data, from, to, nodes: make_children(), suffix_link: Link::default()}
     }
 
     fn boxed(data: &'a str, from: usize, to: Weak<RefCell<usize>>) -> Box<Self> {
@@ -82,15 +92,11 @@ impl<'a> Node<'a> {
     }
 
     fn len(&self) -> usize {
-        let to = match &self.to {
-            Position::Data(x) => *x,
-            Position::Ptr(weak) => match weak.upgrade() {
-                Some(x) => x.borrow().clone(),
-                _ => panic!(),
-            }
-        };
+        self.finished_at() - self.from
+    }
 
-        to - self.from
+    fn finished_at(&self) -> usize {
+        self.to
     }
 }
 
@@ -113,9 +119,11 @@ struct ActivePoint<'a> {
     root: Box<Node<'a>>,
 }
 
+
 impl<'a> ActivePoint<'a> {
     fn new(data: &'a str) -> Self {
-        let mut root = Box::new(Node::new(data, 0, Weak::new()));
+        let root_to_ptr = Rc::new(RefCell::new(ROOT_TO));
+        let mut root = Box::new(Node::new(data, 0, Rc::downgrade(&root_to_ptr)));
         Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root }
     }
 
@@ -127,6 +135,7 @@ impl<'a> ActivePoint<'a> {
         let data_bytes = self.root.data.as_bytes();
         let key = self.edge.unwrap_or(key);
         let noderef = unsafe { self.node.as_ref() };
+        // return noderef.nodes[key as usize].0.is_some();
         if let Some(ref child) = noderef.nodes[key as usize].0 {
             return data_bytes[child.from + self.length] == data_bytes[current_end];
         }
@@ -156,10 +165,11 @@ impl<'a> ActivePoint<'a> {
     }
 
     fn add_node(&mut self, for_letter: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
+        dbg!(for_letter as char);
         let mut noderef = unsafe { self.node.as_mut() };
         let loc = *current_end.borrow();
         noderef.nodes[for_letter as usize] = Child::new(
-            self.root.data, *current_end.borrow(), Rc::downgrade(&current_end),
+            self.root.data, loc, Rc::downgrade(&Rc::new(RefCell::new(self.root.data.len()))),
         );
 
         noderef
@@ -167,10 +177,10 @@ impl<'a> ActivePoint<'a> {
 
     // `at` points to the node to split.
     fn split_node(&mut self, at: u8, for_letter: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
-        // dbg!(at as u8 as char, noderef as *const _, &noderef.nodes[at].0, &self.root);
         let at = at as usize;
         let old_node = {
             let mut noderef = unsafe { self.node.as_mut() };
+            dbg!(at as u8 as char, noderef as *const _, &noderef.nodes[at].0, &self.root);
             noderef.nodes[at].0.take().unwrap()
         };
 
@@ -187,25 +197,15 @@ impl<'a> ActivePoint<'a> {
         //     dbg!(&node, active_length);
         // }
 
-        let to = match node.to {
-            Position::Ptr(ref ptr) => ptr.upgrade().as_ref().unwrap().borrow().clone(),
-            Position::Data(ref x) => *x,
-        };
-
+        let to = node.finished_at();
         debug_assert!(active_length < to);
-
         let current_end_ptr = current_end.borrow();
         let from = node.from;
         let mut new_node = Node::inner(input, from, from + active_length);
         let key = from + active_length;
-        new_node.nodes[input.as_bytes()[key] as usize] = Child::new(
-            input, key, Rc::downgrade(&current_end),
-        );
-
-        new_node.nodes[for_letter as usize] = Child::new(
-            input, *current_end_ptr, Rc::downgrade(&current_end),
-        );
-
+        let end = Rc::new(RefCell::new(self.root.data.len()));
+        new_node.nodes[input.as_bytes()[key] as usize] = Child::new(input, key, Rc::downgrade(&end));
+        new_node.nodes[for_letter as usize] = Child::new(input, *current_end_ptr, Rc::downgrade(&end));
         new_node
     }
 
@@ -232,6 +232,7 @@ impl<'a> SuffixTree<'a> {
         for (i, byte) in input.as_ref().as_bytes().iter().chain(&[END]).enumerate() {
             *current_end.borrow_mut() = i;
             let mut last_created_node = Link::default();
+            dbg!(*byte as char);
             if dbg!(active_point.has_child(*byte, *current_end.borrow())) {
                 active_point.update(*byte);
                 active_point.try_follow_edge();
@@ -240,6 +241,7 @@ impl<'a> SuffixTree<'a> {
             }
 
             while remainder > 1 {
+                // debug_assert!(active_point.length > 0);
                 // dbg!(*active_point.edge.as_ref().unwrap() as char);
                 let input = input.as_ref();
                 let inserted_node_link = match active_point.edge {
@@ -252,8 +254,8 @@ impl<'a> SuffixTree<'a> {
 
                 last_created_node = inserted_node_link;
                 if dbg!(active_point.is_at_root()) { // r1
-                    active_point.length -= 1;
                     dbg!(active_point.length, remainder);
+                    active_point.length -= 1;
                     let current_end_ptr = current_end.borrow();
                     let loc = *current_end_ptr - active_point.length;
                     active_point.edge = Some(if input.len() == loc {
@@ -275,6 +277,31 @@ impl<'a> SuffixTree<'a> {
 
         // *current_end.borrow_mut() += 1;
         Self{root: *active_point.root, to: current_end}
+    }
+
+    fn find(&self, pattern: &str) -> Option<usize> {
+        let mut count = 0;
+        let mut pattern_iter = pattern.as_bytes().iter();
+        let mut node: &Node = &self.root.nodes.get(*pattern_iter.next()? as usize)?.0.as_ref()?.as_ref();
+        dbg!(&self.root.data[node.from .. node.finished_at()]);
+        let mut node_byte_count = 1;
+        for byte in pattern_iter {
+            let mut text_index = node.from + node_byte_count;
+            if text_index >= node.finished_at() {
+                node = node.nodes.get(*byte as usize)?.0.as_ref()?;
+                node_byte_count = 0;
+                text_index = node.from;
+            }
+
+            if dbg!(self.root.data.as_bytes()[text_index]) != dbg!(*byte) {
+                dbg!(node, &self.root.data[node.from .. node.finished_at()]);
+                return None;
+            }
+
+            node_byte_count += 1;
+        }
+
+        Some(node.from + node_byte_count - pattern.len())
     }
 }
 
@@ -398,66 +425,13 @@ mod tests {
     }
 
     fn end_node(data: &str, expected_endptr: Rc<RefCell<usize>>) -> Node {
-        Node{
+        Node {
             data,
             from: data.len(),
-            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+            to: data.len(),
             suffix_link: Link::default(),
             nodes: NodesBuild::new().run(),
         }
-    }
-
-    #[test]
-    fn no_repeats() {
-        let data = "abc";
-        let tree = SuffixTree::new(data);
-        let expected_endptr = Rc::new(RefCell::new(data.len()));
-        let expected_tree = SuffixTree{
-            root: Node {
-                data,
-                from: 0,
-                to: Position::Ptr(Weak::new()),
-                nodes: NodesBuild::new()
-                    .add(END as char, end_node(data, expected_endptr.clone()))
-                    .add('a', Node{
-                        data,
-                        from: 0,
-                        to: Position::Ptr(Rc::downgrade(&expected_endptr)),
-                        suffix_link: Link::default(),
-                        nodes: NodesBuild::new().run(),
-                    })
-                    .add('b', Node{
-                        data,
-                        from: 1,
-                        to: Position::Ptr(Rc::downgrade(&expected_endptr)),
-                        suffix_link: Link::default(),
-                        nodes: NodesBuild::new().run(),
-                    })
-                    .add('c', Node{
-                        data,
-                        from: 2,
-                        to: Position::Ptr(Rc::downgrade(&expected_endptr)),
-                        suffix_link: Link::default(),
-                        nodes: NodesBuild::new().run(),
-                    })
-                    .run(),
-                suffix_link: Link::default(),
-            },
-            to: Rc::new(RefCell::new(data.len())),
-        };
-
-        test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
-    }
-
-    fn get_validated_node<'b, 'a: 'b>(node: &'a Node<'b>, key: u8, expected_from: usize, expected_to: usize) -> Option<&'a Node<'b>> {
-        node.nodes[key as usize].0.as_ref().map(|node| {
-            assert_eq!(node.from, expected_from);
-            match node.to {
-                Position::Data(to) => assert_eq!(to, expected_to),
-                _ => assert!(false),
-            }
-            node.as_ref()
-        })
     }
 
     fn test_nodes(actual: &[Child; 256], expected: &[Child; 256]) {
@@ -496,6 +470,48 @@ mod tests {
     }
 
     #[test]
+    fn no_repeats() {
+        let data = "abc";
+        let tree = SuffixTree::new(data);
+        let expected_endptr = Rc::new(RefCell::new(data.len()));
+        let expected_tree = SuffixTree{
+            root: Node {
+                data,
+                from: 0,
+                to: ROOT_TO,
+                nodes: NodesBuild::new()
+                    .add(END as char, end_node(data, expected_endptr.clone()))
+                    .add('a', Node{
+                        data,
+                        from: 0,
+                        to: data.len(),
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new().run(),
+                    })
+                    .add('b', Node{
+                        data,
+                        from: 1,
+                        to: data.len(),
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new().run(),
+                    })
+                    .add('c', Node{
+                        data,
+                        from: 2,
+                        to: data.len(),
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new().run(),
+                    })
+                    .run(),
+                suffix_link: Link::default(),
+            },
+            to: Rc::new(RefCell::new(data.len())),
+        };
+
+        test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
+    }
+
+    #[test]
     fn two_repeats() {
         let data = "abcabx";
         let tree = SuffixTree::new(data);
@@ -504,14 +520,14 @@ mod tests {
             .add('c', Node{
                 data,
                 from: 2,
-                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                to: data.len(),
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
             .add('x', Node{
                 data,
                 from: 5, // TODO: what's a number correct (by design)????
-                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                to: data.len(),
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -524,34 +540,34 @@ mod tests {
             root: Node {
                 data,
                 from: 0,
-                to: Position::Ptr(Weak::new()),
+                to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         data,
                         from: 0,
-                        to: Position::Data(2),
+                        to: 2,
                         suffix_link: Link::default(),
                         nodes: anode_nodes,
                     })
                     .add('b', Node{
                         data,
                         from: 1,
-                        to: Position::Data(2),
+                        to: 2,
                         suffix_link: Link::default(),
                         nodes: bnode_nodes,
                     })
                     .add('c', Node{
                         data,
                         from: 2,
-                        to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                        to: data.len(),
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('x', Node{
                         data,
                         from: 5,
-                        to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                        to: data.len(),
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
@@ -585,13 +601,13 @@ mod tests {
         }
     }
 
-    impl<'a> Child<'a> {
-        fn suffix_link_ref(&self) -> &Node {
-            unsafe {
-                self.0.as_ref().unwrap().suffix_link.0.as_ref().unwrap().as_ref()
-            }
-        }
-    }
+    // impl<'a> Child<'a> {
+    //     fn suffix_link_ref(&self) -> &Node {
+    //         unsafe {
+    //             self.0.as_ref().unwrap().suffix_link.0.as_ref().unwrap().as_ref()
+    //         }
+    //     }
+    // }
 
     #[test]
     fn three_repeats() {
@@ -602,14 +618,14 @@ mod tests {
             .add('a', Node{
                 data,
                 from: 3,
-                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                to: data.len(),
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
             .add('d', Node{
                 data,
                 from: 9,
-                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                to: data.len(),
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -625,14 +641,14 @@ mod tests {
             .add('c', Node{
                 data,
                 from: 2,
-                to: Position::Data(3),
+                to: 3,
                 suffix_link: Link::default(),
                 nodes: b_cnode_nodes,
             })
             .add('x', Node{
                 data,
                 from: 5, // TODO: what's a number correct (by design)????
-                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                to: data.len(),
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -642,14 +658,14 @@ mod tests {
             .add('c', Node{
                 data,
                 from: 2,
-                to: Position::Data(3),
+                to: 3,
                 suffix_link: Link::default(),
                 nodes: ab_cnode_nodes,
             })
             .add('x', Node{
                 data,
                 from: 5, // TODO: what's a number correct (by design)????
-                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                to: data.len(),
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -659,41 +675,41 @@ mod tests {
             root: Node {
                 data,
                 from: 0,
-                to: Position::Ptr(Weak::new()),
+                to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         data,
                         from: 0,
-                        to: Position::Data(2),
+                        to: 2,
                         suffix_link: Link::default(),
                         nodes: anode_nodes,
                     })
                     .add('b', Node{
                         data,
                         from: 1,
-                        to: Position::Data(2),
+                        to: 2,
                         suffix_link: Link::default(),
                         nodes: bnode_nodes,
                     })
                     .add('c', Node{
                         data,
                         from: 2,
-                        to: Position::Data(3),
+                        to: 3,
                         suffix_link: Link::default(),
                         nodes: cnode_nodes,
                     })
                     .add('d', Node{
                         data,
                         from: 9,
-                        to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                        to: data.len(),
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('x', Node{
                         data,
                         from: 5,
-                        to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                        to: data.len(),
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
@@ -753,33 +769,33 @@ mod tests {
                 root: Node {
                     data,
                     from: 0,
-                    to: Position::Ptr(Weak::new()),
+                    to: ROOT_TO,
                     nodes: NodesBuild::new()
                         .add(END as char, end_node(data, expected_endptr.clone()))
                         .add('a', Node{
                             data,
                             from: 0,
-                            to: Position::Data(1),
+                            to: 1,
                             suffix_link: Link::default(),
                             nodes: NodesBuild::new()
                                 .add('k', Node{
                                     data,
                                     from: 6,
-                                    to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                    to: data.len(),
                                     nodes: make_children(),
                                     suffix_link: Link::default(),
                                 })
                                 .add('d', Node{
                                     data,
                                     from: 4,
-                                    to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                    to: data.len(),
                                     nodes: make_children(),
                                     suffix_link: Link::default(),
                                 })
                                 .add('b', Node{
                                     data,
                                     from: 1,
-                                    to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                    to: data.len(),
                                     nodes: make_children(),
                                     suffix_link: Link::default(),
                                 })
@@ -788,28 +804,28 @@ mod tests {
                         .add('b', Node{
                             data,
                             from: 1,
-                            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                            to: data.len(),
                             suffix_link: Link::default(),
                             nodes: make_children(),
                         })
                         .add('c', Node{
                             data,
                             from: 2,
-                            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                            to: data.len(),
                             suffix_link: Link::default(),
                             nodes: make_children(),
                         })
                         .add('d', Node{
                             data,
                             from: 4,
-                            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                            to: data.len(),
                             suffix_link: Link::default(),
                             nodes: make_children(),
                         })
                         .add('k', Node{
                             data,
                             from: 6,
-                            to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                            to: data.len(),
                             suffix_link: Link::default(),
                             nodes: make_children(),
                         })
@@ -836,26 +852,26 @@ mod tests {
             root: Node {
                 data,
                 from: 0,
-                to: Position::Ptr(Weak::new()),
+                to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         data,
                         from: 0,
-                        to: Position::Data(2),
+                        to: 2,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
                                 data,
                                 from: 2,
-                                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                to: data.len(),
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             })
                             .add(END as char, Node{
                                 data,
                                 from: 4,
-                                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                to: data.len(),
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             }).run(),
@@ -863,20 +879,20 @@ mod tests {
                     .add('b', Node{
                         data,
                         from: 1,
-                        to: Position::Data(2),
+                        to: 2,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
                                 data,
                                 from: 2,
-                                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                to: data.len(),
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             })
                             .add(END as char, Node{
                                 data,
                                 from: 4,
-                                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+                                to: data.len(),
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             }).run(),
@@ -900,7 +916,104 @@ mod tests {
         );
     }
 
-    #[test]
-    fn experiment() {
-    }
+    // mod find {
+    //     use super::*;
+
+    //     #[test]
+    //     fn true_positive(){
+    //         let data = "dd";
+    //         let tree = SuffixTree::new(data);
+    //         let expected_endptr = Rc::new(RefCell::new(data.len()));
+
+    //         let mut expected_tree = SuffixTree{
+    //             root: Node {
+    //                 data,
+    //                 from: 0,
+    //                 to: Position::Ptr(Weak::new()),
+    //                 nodes: NodesBuild::new()
+    //                     .add(END as char, end_node(data, expected_endptr.clone()))
+    //                     .add('d', Node{
+    //                         data,
+    //                         from: 0,
+    //                         to: Position::Data(1),
+    //                         suffix_link: Link::default(),
+    //                         nodes: NodesBuild::new()
+    //                             .add(END as char, end_node(data, expected_endptr.clone()))
+    //                             .add('d', Node{
+    //                                 data,
+    //                                 from: 1,
+    //                                 to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+    //                                 suffix_link: Link::default(),
+    //                                 nodes: make_children(),
+    //                             }).run(),
+    //                     }).run(),
+    //                 suffix_link: Link::default(),
+    //             },
+    //             to: expected_endptr,
+    //         };
+    //         //let mut expected_tree = SuffixTree{
+    //         //    root: Node {
+    //         //        data,
+    //         //        from: 0,
+    //         //        to: Position::Ptr(Weak::new()),
+    //         //        nodes: NodesBuild::new()
+    //         //            .add(END as char, end_node(data, expected_endptr.clone()))
+    //         //            .add('d', Node{
+    //         //                data,
+    //         //                from: 0,
+    //         //                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+    //         //                suffix_link: Link::default(),
+    //         //                nodes: make_children(),
+    //         //            })
+    //         //            .add('u', Node{
+    //         //                data,
+    //         //                from: 1,
+    //         //                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+    //         //                suffix_link: Link::default(),
+    //         //                nodes: make_children(),
+    //         //            })
+    //         //            .add('m', Node {
+    //         //                data,
+    //         //                from: 2,
+    //         //                to: Position::Data(3),
+    //         //                suffix_link: Link::default(),
+    //         //                nodes: NodesBuild::new()
+    //         //                    // .add('m', Node {
+    //         //                    // }),
+    //         //                    // .add('y')
+    //         //                    .run(),
+    //         //            })
+    //         //            .add('y', Node {
+    //         //                data,
+    //         //                from: 4,
+    //         //                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
+    //         //                suffix_link: Link::default(),
+    //         //                nodes: make_children(),
+    //         //            })
+    //         //            .run(),
+    //         //        suffix_link: Link::default(),
+    //         //    },
+    //         //    to: Rc::new(RefCell::new(data.len())),
+    //         //};
+
+    //         test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
+    //         // let tree = SuffixTree::new("dummy and indus");
+    //         // dbg!(b"dummy");
+    //         // let position = tree.find("dum");
+    //         // assert_eq!(position, Some(0));
+    //     }
+
+    //     #[test]
+    //     fn true_negative(){}
+
+    //     #[test]
+    //     fn false_positive(){}
+
+    //     #[test]
+    //     fn false_negative(){}
+    // }
+
+    // #[test]
+    // fn experiment() {
+    // }
 }
