@@ -36,7 +36,9 @@ impl<'a> From<&Node<'a>> for Link<'a> {
 
 impl<'a> Link<'a> {
     fn set_suffix(&mut self, to: Link<'a>) {
-        self.0.map(|mut last_node| unsafe { last_node.as_mut().suffix_link = to; });
+        if let Link(Some(mut node)) = self {
+            unsafe { node.as_mut().suffix_link = to; }
+        }
     }
 }
 
@@ -47,6 +49,8 @@ impl<'a> Default for Link<'a> {
 }
 
 struct Child<'a>(Option<Box<Node<'a>>>);
+
+use std::io::Write;
 
 impl<'a> Child<'a> {
     fn new(data: &'a str, from: usize, to: Weak<RefCell<usize>>) -> Self {
@@ -88,7 +92,8 @@ impl<'a> Node<'a> {
     }
 
     fn boxed(data: &'a str, from: usize, to: Weak<RefCell<usize>>) -> Box<Self> {
-        Box::new(Self::new(data, from, to))
+        let ret = Box::new(Self::new(data, from, to));
+        ret
     }
 
     fn len(&self) -> usize {
@@ -124,6 +129,7 @@ impl<'a> ActivePoint<'a> {
     fn new(data: &'a str) -> Self {
         let root_to_ptr = Rc::new(RefCell::new(ROOT_TO));
         let mut root = Box::new(Node::new(data, 0, Rc::downgrade(&root_to_ptr)));
+        dbg!(root.as_ref() as *const _);
         Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root }
     }
 
@@ -135,31 +141,48 @@ impl<'a> ActivePoint<'a> {
         let data_bytes = self.root.data.as_bytes();
         let key = self.edge.unwrap_or(key);
         let noderef = unsafe { self.node.as_ref() };
-        // return noderef.nodes[key as usize].0.is_some();
-        if let Some(ref child) = noderef.nodes[key as usize].0 {
-            return data_bytes[child.from + self.length] == data_bytes[current_end];
-        }
+        noderef.nodes[key as usize].0.is_some()
+        // if let Some(ref child) = noderef.nodes[key as usize].0 {
+        //     return data_bytes[child.from + self.length] == data_bytes[current_end];
+        // }
 
-        return false;
+        // false
     }
 
     fn update(&mut self, key: u8) {
-        self.edge = self.edge.or(Some(key));
+        // self.edge = self.edge.or(Some(key));
         self.length += 1;
     }
 
+    fn is_root(&self, link: Link) -> bool {
+        match link.0 {
+            Some(x) => x.as_ptr() as *const _ == self.root.as_ref() as *const _,
+            _ => false,
+        }
+    }
+
+    fn is_prefix(&self, key: u8, for_letter: u8) -> bool {
+        // let key = self.edge.take().unwrap();
+        let noderef = unsafe { self.node.as_ref() };
+        let node = noderef.nodes[key as usize].0.as_ref().unwrap();
+        self.root.data.as_bytes()[self.length + node.from] == for_letter
+    }
+
     // move further if the active point is in the end of the its edge.
-    fn try_follow_edge(&mut self) {
+    fn try_follow_edge(&mut self) -> bool {
         // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
         let key = self.edge.take().unwrap();
-        let noderef = unsafe { self.node.as_mut() };
+        let noderef: &Node = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
-        if self.length == node.len() {
-            self.length = 0;
+        if self.length >= node.len() {
+            self.length -= node.len();
             dbg!(&noderef, node, key as char);
+            self.edge = Some(self.root.data.as_bytes()[node.to]);
             self.node = NonNull::from(node.as_ref());
+            true
         } else {
             self.edge = Some(key);
+            false
         }
         // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
     }
@@ -168,10 +191,10 @@ impl<'a> ActivePoint<'a> {
         dbg!(for_letter as char);
         let mut noderef = unsafe { self.node.as_mut() };
         let loc = *current_end.borrow();
-        noderef.nodes[for_letter as usize] = Child::new(
-            self.root.data, loc, Rc::downgrade(&Rc::new(RefCell::new(self.root.data.len()))),
-        );
-
+        let len = Rc::new(RefCell::new(self.root.data.len()));
+        let weak = Rc::downgrade(&len);
+        let ch = Child::new(self.root.data, loc, weak);
+        noderef.nodes[for_letter as usize] = ch;
         noderef
     }
 
@@ -213,7 +236,7 @@ impl<'a> ActivePoint<'a> {
         let noderef = unsafe { self.node.as_ref() };
         dbg!(&noderef);
         self.node = match noderef.suffix_link.0 {
-            Some(ref x) => x.clone(),
+            Some(ref x) => *x,
             None => NonNull::from(self.root.as_ref()),
         };
     }
@@ -223,56 +246,93 @@ impl<'a> ActivePoint<'a> {
     }
 }
 
+use crate::trace::Trace;
+use crate::trace::Tracable;
+use std::io;
+
+static mut TR: Option<Trace> = None;
+
 impl<'a> SuffixTree<'a> {
     fn new<T: AsRef<str> + ?Sized>(input: &'a T) -> Self {
         let current_end = Rc::new(RefCell::new(0usize));
-        let mut unwritted_node_count = 0;
         let mut active_point = ActivePoint::new(input.as_ref());
-        let mut remainder = 1;
-        for (i, byte) in input.as_ref().as_bytes().iter().chain(&[END]).enumerate() {
+        let mut remainder = 0; // how many nodes should be inserted.
+        'outer: for (i, byte) in input.as_ref().as_bytes().iter().chain(&[END]).enumerate() {
             *current_end.borrow_mut() = i;
             let mut last_created_node = Link::default();
             dbg!(*byte as char);
-            if dbg!(active_point.has_child(*byte, *current_end.borrow())) {
-                active_point.update(*byte);
-                active_point.try_follow_edge();
-                remainder += 1;
-                continue;
-            }
+            // let key = *active_point.edge.get_or_insert(*byte);
+            remainder += 1;
+            // move to the new edge every time when a suffix being inserted is encountered.
+            // Current algorithm doesn't cover case when suffix being inserted after insertion.
+            dbg!(remainder);
+            while remainder > 0 {
+                let key = if active_point.length == 0 {
+                    active_point.edge = Some(*byte);
+                    *byte
+                } else {
+                    active_point.edge.unwrap()
+                };
 
-            while remainder > 1 {
-                // debug_assert!(active_point.length > 0);
-                // dbg!(*active_point.edge.as_ref().unwrap() as char);
-                let input = input.as_ref();
-                let inserted_node_link = match active_point.edge {
-                    Some(key) => active_point.split_node(key, *byte, current_end.clone()),
-                    _ => active_point.add_node(*byte, current_end.clone()),
-                }.into();
+                //let key = dbg!(*active_point.edge.get_or_insert(*byte));
+                let inserted_node_link: Link = if dbg!(!active_point.has_child(key, *current_end.borrow())) {
+                    tprintln!("add node");
+                    active_point.add_node(key, current_end.clone()).into()
+                } else if dbg!(active_point.try_follow_edge()) {
+                    continue;
+                } else if active_point.is_prefix(key, *byte) {
+                    active_point.update(key);
+                    continue 'outer;
+                } else {
+                    active_point.split_node(key, *byte, current_end.clone()).into()
+                };
 
-                // r2
-                last_created_node.set_suffix(inserted_node_link);
+                if let (Link(Some(last_created_node)), Link(Some(inserted_node_link))) = (last_created_node, inserted_node_link) {
+                    // debug_assert_ne!(
+                    //     inserted_node_link.as_ptr() as *const _,
+                    //     active_point.root.as_ref() as *const _,
+                    // );
+                    unsafe {
+                        dbg!(
+                            last_created_node.as_ref(),
+                            inserted_node_link.as_ref(),
+                        );
+                    }
+                }
 
-                last_created_node = inserted_node_link;
-                if dbg!(active_point.is_at_root()) { // r1
+                if !active_point.is_root(inserted_node_link) {
+                    last_created_node.set_suffix(inserted_node_link);
+                    last_created_node = inserted_node_link;
+                }
+
+                // last_created_node = inserted_node_link;
+                remainder -= 1;
+                if dbg!(active_point.is_at_root() && active_point.length > 0) { // r1
                     dbg!(active_point.length, remainder);
                     active_point.length -= 1;
                     let current_end_ptr = current_end.borrow();
-                    let loc = *current_end_ptr - active_point.length;
-                    active_point.edge = Some(if input.len() == loc {
+                    let loc = *current_end_ptr - remainder + 1;//active_point.length;
+                    active_point.edge = Some(if input.as_ref().len() == loc {
                         END
                     } else {
-                        input.as_bytes()[loc]
+                        input.as_ref().as_bytes()[loc]
                     });
+
                 } else { // r3
+                    let node = unsafe { active_point.node.as_ref() };
                     active_point.follow_suffix();
                 }
 
-                remainder -= 1;
                 // dbg!(*active_point.edge.as_ref().unwrap() as char);
             }
 
-            active_point.add_node(*byte, current_end.clone());
-            active_point.edge = None;
+            // active_point.edge = Some(*byte);
+            // active_point.add_node(*byte, current_end.clone());
+            // active_point.length = 0;
+            // remainder -= 1;
+
+            // active_point.add_node(*byte, current_end.clone());
+            // active_point.edge = None;
         }
 
         // *current_end.borrow_mut() += 1;
@@ -512,7 +572,108 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Test causes memory fault"]
+    fn memcrash() {
+        unsafe {
+            TR = match Trace::new("/tmp/two_repeats") {
+                Ok(x) => Some(x),
+                Err(e) => panic!("OMG {}", e),
+            };
+        }
+
+        let mut trace = unsafe {TR.as_mut().unwrap()};
+        let current_end = Rc::new(RefCell::new(0usize));
+
+        let input = "ababx";
+
+        let mut active_point = ActivePoint::new(input.as_ref());
+
+        {
+            let key = b'a';
+            let byte = &key;
+            *current_end.borrow_mut() += 1;
+            active_point.edge = Some(*byte);
+            let mut last_created_node = Link::default();
+            let mut tr = trace.object(format!("`{}` `{}`", *byte as char, *byte).as_ref());
+            let node: &Node = active_point.add_node(key, current_end.clone());
+            let inserted_node_link = node.into();
+            last_created_node.set_suffix(inserted_node_link);
+            last_created_node = inserted_node_link;
+        }
+
+        {
+            *current_end.borrow_mut() += 1;
+            let mut last_created_node = Link::default();
+            let key = b'b';
+            let byte = &key;
+            active_point.edge = Some(*byte);
+            let mut tr = trace.object(format!("`{}` `{}`", *byte as char, *byte).as_ref());
+            let node: &Node = active_point.add_node(key, current_end.clone());
+            let inserted_node_link = node.into();
+            last_created_node.set_suffix(inserted_node_link);
+            last_created_node = inserted_node_link;
+        }
+
+        {
+            let mut last_created_node = Link::default();
+            *current_end.borrow_mut() += 1;
+            active_point.length += 1;
+        }
+
+        {
+            let mut last_created_node = Link::default();
+            *current_end.borrow_mut() += 1;
+            active_point.length += 1;
+        }
+
+        {
+            let mut last_created_node = Link::default();
+            *current_end.borrow_mut() += 1;
+            let key = b'a';
+            let byte = &key;
+            let node = active_point.split_node(key, *byte, current_end.clone());
+            let inserted_node_link = node.into();
+            last_created_node.set_suffix(inserted_node_link);
+            last_created_node = inserted_node_link;
+
+            active_point.length -= 1;
+            active_point.edge = Some(b'a'); // It's not designed by Ukknen algorithm but allows to corrupt memory
+
+            let key = b'a';
+            let byte = &key;
+            let node = active_point.split_node(key, *byte, current_end.clone());
+            let inserted_node_link: Link = node.into();
+            last_created_node.set_suffix(inserted_node_link);
+            last_created_node = inserted_node_link;
+        }
+
+        // split
+        // active_point.node = inserted_node_link.0.unwrap();
+        // active_point.length = 1;
+        // active_point.split_node(b'a', b'x', current_end.clone());
+        // end split
+
+
+        // let key = b'c';
+        // let byte = &key;
+        // let mut tr = trace.object(format!("`{}` `{}`", *byte as char, *byte).as_ref());
+        // let node: &Node = active_point.add_node(key, current_end.clone(), &mut tr);
+        // let inserted_node_link = node.into();
+        // last_created_node.set_suffix(inserted_node_link);
+        // last_created_node = inserted_node_link;
+
+        // let tree = SuffixTree::new(input);
+    }
+
+    #[test]
     fn two_repeats() {
+        unsafe {
+            TR = match Trace::new("/tmp/two_repeats") {
+                Ok(x) => Some(x),
+                Err(e) => panic!("OMG {}", e),
+            };
+        }
+
         let data = "abcabx";
         let tree = SuffixTree::new(data);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
@@ -952,91 +1113,64 @@ mod tests {
         );
     }
 
-    // mod find {
-    //     use super::*;
+     mod find {
+         use super::*;
 
-    //     #[test]
-    //     fn true_positive(){
-    //         let data = "dd";
-    //         let tree = SuffixTree::new(data);
-    //         let expected_endptr = Rc::new(RefCell::new(data.len()));
+         #[test]
+         fn true_positive(){
+             // let data = "dummy";
+             // let tree = SuffixTree::new(data);
+             // let expected_endptr = Rc::new(RefCell::new(data.len()));
+             // let mut expected_tree = SuffixTree{
+             //     root: Node {
+             //         data,
+             //         from: 0,
+             //         to: ROOT_TO,
+             //         nodes: NodesBuild::new()
+             //             .add(END as char, end_node(data, expected_endptr.clone()))
+             //             .add('d', Node{
+             //                 data,
+             //                 from: 0,
+             //                 to: data.len(),
+             //                 suffix_link: Link::default(),
+             //                 nodes: make_children(),
+             //             })
+             //             .add('u', Node{
+             //                 data,
+             //                 from: 1,
+             //                 to: data.len(),
+             //                 suffix_link: Link::default(),
+             //                 nodes: make_children(),
+             //             })
+             //             .add('m', Node {
+             //                 data,
+             //                 from: 2,
+             //                 to: 3,
+             //                 suffix_link: Link::default(),
+             //                 nodes: NodesBuild::new()
+             //                     // .add('m', Node {
+             //                     // }),
+             //                     // .add('y')
+             //                     .run(),
+             //             })
+             //             .add('y', Node {
+             //                 data,
+             //                 from: 4,
+             //                 to: data.len(),
+             //                 suffix_link: Link::default(),
+             //                 nodes: make_children(),
+             //             }).run(),
+             //         suffix_link: Link::default(),
+             //     },
+             //     to: Rc::new(RefCell::new(data.len())),
+             // };
 
-    //         let mut expected_tree = SuffixTree{
-    //             root: Node {
-    //                 data,
-    //                 from: 0,
-    //                 to: Position::Ptr(Weak::new()),
-    //                 nodes: NodesBuild::new()
-    //                     .add(END as char, end_node(data, expected_endptr.clone()))
-    //                     .add('d', Node{
-    //                         data,
-    //                         from: 0,
-    //                         to: Position::Data(1),
-    //                         suffix_link: Link::default(),
-    //                         nodes: NodesBuild::new()
-    //                             .add(END as char, end_node(data, expected_endptr.clone()))
-    //                             .add('d', Node{
-    //                                 data,
-    //                                 from: 1,
-    //                                 to: Position::Ptr(Rc::downgrade(&expected_endptr)),
-    //                                 suffix_link: Link::default(),
-    //                                 nodes: make_children(),
-    //                             }).run(),
-    //                     }).run(),
-    //                 suffix_link: Link::default(),
-    //             },
-    //             to: expected_endptr,
-    //         };
-    //         //let mut expected_tree = SuffixTree{
-    //         //    root: Node {
-    //         //        data,
-    //         //        from: 0,
-    //         //        to: Position::Ptr(Weak::new()),
-    //         //        nodes: NodesBuild::new()
-    //         //            .add(END as char, end_node(data, expected_endptr.clone()))
-    //         //            .add('d', Node{
-    //         //                data,
-    //         //                from: 0,
-    //         //                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
-    //         //                suffix_link: Link::default(),
-    //         //                nodes: make_children(),
-    //         //            })
-    //         //            .add('u', Node{
-    //         //                data,
-    //         //                from: 1,
-    //         //                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
-    //         //                suffix_link: Link::default(),
-    //         //                nodes: make_children(),
-    //         //            })
-    //         //            .add('m', Node {
-    //         //                data,
-    //         //                from: 2,
-    //         //                to: Position::Data(3),
-    //         //                suffix_link: Link::default(),
-    //         //                nodes: NodesBuild::new()
-    //         //                    // .add('m', Node {
-    //         //                    // }),
-    //         //                    // .add('y')
-    //         //                    .run(),
-    //         //            })
-    //         //            .add('y', Node {
-    //         //                data,
-    //         //                from: 4,
-    //         //                to: Position::Ptr(Rc::downgrade(&expected_endptr)),
-    //         //                suffix_link: Link::default(),
-    //         //                nodes: make_children(),
-    //         //            })
-    //         //            .run(),
-    //         //        suffix_link: Link::default(),
-    //         //    },
-    //         //    to: Rc::new(RefCell::new(data.len())),
-    //         //};
-
-    //         // let tree = SuffixTree::new("dummy and indus");
-    //         // dbg!(b"dummy");
-    //         // let position = tree.find("dum");
-    //         // assert_eq!(position, Some(0));
-    //     }
+             // test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
+             let tree = SuffixTree::new("nuandand");
+             // dbg!(b"dummy");
+             // let position = tree.find("dum");
+             // assert_eq!(position, Some(0));
+         }
 
     //     #[test]
     //     fn true_negative(){}
@@ -1046,7 +1180,7 @@ mod tests {
 
     //     #[test]
     //     fn false_negative(){}
-    // }
+    }
 
     // #[test]
     // fn experiment() {
