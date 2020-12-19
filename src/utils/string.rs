@@ -667,12 +667,12 @@ mod tests {
 
     #[test]
     fn two_repeats() {
-        unsafe {
-            TR = match Trace::new("/tmp/two_repeats") {
-                Ok(x) => Some(x),
-                Err(e) => panic!("OMG {}", e),
-            };
-        }
+        // unsafe {
+        //     TR = match Trace::new("/tmp/two_repeats") {
+        //         Ok(x) => Some(x),
+        //         Err(e) => panic!("OMG {}", e),
+        //     };
+        // }
 
         let data = "abcabx";
         let tree = SuffixTree::new(data);
@@ -1166,10 +1166,10 @@ mod tests {
              // };
 
              // test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
-             let tree = SuffixTree::new("nuandand");
+             let tree = SuffixTree::new(LOREM_IPSUM);
              // dbg!(b"dummy");
-             // let position = tree.find("dum");
-             // assert_eq!(position, Some(0));
+             let position = tree.find("dum");
+             assert_eq!(position, Some(23));
          }
 
     //     #[test]
