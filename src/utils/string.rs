@@ -12,10 +12,10 @@ use crate::tprintln;
 const END: u8 = b'0';
 
 static LOREM_IPSUM: &str = r#"
-Lorem Ipsum is simply dummy text of the printing and typesetting industry.
+Lorem Ipsum has been the industry's standard dummy text ever since the 1500s,
+when an unknown printer took a galley of type and scrambled it to make a type specimen book.
 "#;
 
-// Lorem Ipsum has been the industry's standard dummy text ever since the 1500s,
 // when an unknown printer took a galley of type and scrambled it to make a type specimen book.
 /// Ukkonen's algorithm
 struct SuffixTree<'a> {
@@ -267,6 +267,7 @@ impl<'a> SuffixTree<'a> {
             // Current algorithm doesn't cover case when suffix being inserted after insertion.
             dbg!(remainder);
             while remainder > 0 {
+
                 let key = if active_point.length == 0 {
                     active_point.edge = Some(*byte);
                     *byte
@@ -275,6 +276,7 @@ impl<'a> SuffixTree<'a> {
                 };
 
                 //let key = dbg!(*active_point.edge.get_or_insert(*byte));
+                dbg!(key as char);
                 let inserted_node_link: Link = if dbg!(!active_point.has_child(key, *current_end.borrow())) {
                     tprintln!("add node");
                     active_point.add_node(key, current_end.clone()).into()
@@ -282,23 +284,16 @@ impl<'a> SuffixTree<'a> {
                     continue;
                 } else if active_point.is_prefix(key, *byte) {
                     active_point.update(key);
+                    let link = Link(Some(active_point.node));
+                    if !active_point.is_root(link) {
+                        last_created_node.set_suffix(link);
+                        last_created_node = link;
+                    }
+
                     continue 'outer;
                 } else {
                     active_point.split_node(key, *byte, current_end.clone()).into()
                 };
-
-                if let (Link(Some(last_created_node)), Link(Some(inserted_node_link))) = (last_created_node, inserted_node_link) {
-                    // debug_assert_ne!(
-                    //     inserted_node_link.as_ptr() as *const _,
-                    //     active_point.root.as_ref() as *const _,
-                    // );
-                    unsafe {
-                        dbg!(
-                            last_created_node.as_ref(),
-                            inserted_node_link.as_ref(),
-                        );
-                    }
-                }
 
                 if !active_point.is_root(inserted_node_link) {
                     last_created_node.set_suffix(inserted_node_link);
@@ -1113,73 +1108,63 @@ mod tests {
         );
     }
 
-     mod find {
-         use super::*;
+    #[test]
+    /// test checks a case when a splitted node links to a splitted node which was on the previous
+    /// iteration of 'outer loop.
+    ///
+    /// This happens when `any` suffix is being inserted. It splits the `a` node of the root after
+    /// `n` so the new branch carries only `y`.
+    ///         * (xnyany)
+    ///   (an) /
+    ///       *-* (y)
+    ///       |
+    ///       |
+    /// root -|
+    /// As the node is splitted then the we remember it, decrement remainder as well
+    /// active_point.length. Then we need to insert `ny`. As it was inserted when `ny` suffix was
+    /// in processed then the `n` has `x` and `y` nodes. It looks so:
+    ///         * (xnyany)
+    ///   (an) /
+    ///       *-* (y)
+    ///       |
+    ///       |     *(xnyany)
+    ///       |(n) /
+    /// root -----*-*(yany)
+    ///
+    /// So it means that we can't insert `ny` suffix because it's already there the only thing to
+    /// do is follow the `n` node of the root, decrement active_point.length. Now staying in the
+    /// `n` node we have to insert only `y` but it's there too so we just increment active_point
+    /// but also we link the `an` node of the root to the `n` node of the root.
+    ///
+    /// This trick works only once as we memorize last linked node (last_created_node) until the
+    /// iteration of 'outer loop which starts right after the the incrementing of the
+    /// active_point.lengh.
+    ///
+    /// If don't create the link on this step then we will lose `nz` suffix` after inserting `anz`
+    /// because the `an` will not have the suffix link. This particular input simply crashes if
+    /// don't do this thing.
+    fn post_suffix_linking() {
+        let tree = SuffixTree::new("anxnyanyanz");
+    }
 
-         #[test]
-         fn true_positive(){
-             // let data = "dummy";
-             // let tree = SuffixTree::new(data);
-             // let expected_endptr = Rc::new(RefCell::new(data.len()));
-             // let mut expected_tree = SuffixTree{
-             //     root: Node {
-             //         data,
-             //         from: 0,
-             //         to: ROOT_TO,
-             //         nodes: NodesBuild::new()
-             //             .add(END as char, end_node(data, expected_endptr.clone()))
-             //             .add('d', Node{
-             //                 data,
-             //                 from: 0,
-             //                 to: data.len(),
-             //                 suffix_link: Link::default(),
-             //                 nodes: make_children(),
-             //             })
-             //             .add('u', Node{
-             //                 data,
-             //                 from: 1,
-             //                 to: data.len(),
-             //                 suffix_link: Link::default(),
-             //                 nodes: make_children(),
-             //             })
-             //             .add('m', Node {
-             //                 data,
-             //                 from: 2,
-             //                 to: 3,
-             //                 suffix_link: Link::default(),
-             //                 nodes: NodesBuild::new()
-             //                     // .add('m', Node {
-             //                     // }),
-             //                     // .add('y')
-             //                     .run(),
-             //             })
-             //             .add('y', Node {
-             //                 data,
-             //                 from: 4,
-             //                 to: data.len(),
-             //                 suffix_link: Link::default(),
-             //                 nodes: make_children(),
-             //             }).run(),
-             //         suffix_link: Link::default(),
-             //     },
-             //     to: Rc::new(RefCell::new(data.len())),
-             // };
+    mod find {
+        use super::*;
 
-             // test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
-             let tree = SuffixTree::new(LOREM_IPSUM);
-             // dbg!(b"dummy");
-             let position = tree.find("dum");
-             assert_eq!(position, Some(23));
-         }
+        #[test]
+        fn true_positive(){
+            let tree = SuffixTree::new(LOREM_IPSUM);
+            let position = tree.find("dummy");
+            assert_eq!(position, Some(46));
+        }
 
-    //     #[test]
-    //     fn true_negative(){}
+        //     #[test]
+        //     fn true_negative(){}
 
-    //     #[test]
-    //     fn false_positive(){}
+        //     #[test]
+        //     fn false_positive(){}
 
-    //     #[test]
-    //     fn false_negative(){}
+        //     #[test]
+        //     fn false_negative(){}
     }
 
     // #[test]
