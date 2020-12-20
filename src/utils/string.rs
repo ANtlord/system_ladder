@@ -501,6 +501,12 @@ mod tests {
         }
     }
 
+    impl<'a> From<&Child<'a>> for Link<'a> {
+        fn from(ch: &Child<'a>) -> Self {
+            ch.0.as_ref().unwrap().as_ref().into()
+        }
+    }
+
     fn end_node(data: &str, expected_endptr: Rc<RefCell<usize>>) -> Node {
         Node {
             data,
@@ -773,12 +779,6 @@ mod tests {
         );
     }
 
-    impl<'a> From<&Child<'a>> for Link<'a> {
-        fn from(ch: &Child<'a>) -> Self {
-            ch.0.as_ref().unwrap().as_ref().into()
-        }
-    }
-
     // impl<'a> Child<'a> {
     //     fn suffix_link_ref(&self) -> &Node {
     //         unsafe {
@@ -788,6 +788,10 @@ mod tests {
     // }
 
     #[test]
+    /// Tests splitting a leaf node, linking between splitted nodes and following edge.
+    /// See previous state of the tree in `two_repeats` docs.
+    ///
+    /// assets/utils/string/three_repeats.dot
     fn three_repeats() {
         let data = "abcabxabcd";
         let tree = SuffixTree::new(data);
