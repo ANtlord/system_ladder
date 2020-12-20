@@ -150,25 +150,16 @@ impl<'a> ActivePoint<'a> {
         Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root }
     }
 
-    fn has_child(&self, key: u8, current_end: usize) -> bool {
+    /// Checks if the current node has a child at `key`.
+    fn has_child(&self, key: u8) -> bool {
+        // probable redudant check.
         if key == END {
             return false;
         }
 
         let data_bytes = self.root.data.as_bytes();
-        let key = self.edge.unwrap_or(key);
         let noderef = unsafe { self.node.as_ref() };
         noderef.nodes[key as usize].0.is_some()
-        // if let Some(ref child) = noderef.nodes[key as usize].0 {
-        //     return data_bytes[child.from + self.length] == data_bytes[current_end];
-        // }
-
-        // false
-    }
-
-    fn update(&mut self, key: u8) {
-        // self.edge = self.edge.or(Some(key));
-        self.length += 1;
     }
 
     fn is_root(&self, link: Link) -> bool {
@@ -179,7 +170,6 @@ impl<'a> ActivePoint<'a> {
     }
 
     fn is_prefix(&self, key: u8, for_letter: u8) -> bool {
-        // let key = self.edge.take().unwrap();
         let noderef = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
         self.root.data.as_bytes()[self.length + node.from] == for_letter
@@ -322,12 +312,12 @@ impl<'a> SuffixTree<'a> {
 
                 //let key = dbg!(*active_point.edge.get_or_insert(*byte));
                 dbg!(key as char);
-                let inserted_node_link: Link = if dbg!(!active_point.has_child(key, *current_end.borrow())) {
+                let inserted_node_link: Link = if dbg!(!active_point.has_child(key)) {
                     active_point.add_node(key, current_end.clone()).into()
                 } else if dbg!(active_point.try_follow_edge()) {
                     continue;
                 } else if active_point.is_prefix(key, *byte) {
-                    active_point.update(key);
+                    active_point.length += 1;
                     let link = Link(Some(active_point.node));
                     if !active_point.is_root(link) {
                         last_created_node.set_suffix(link);
@@ -358,7 +348,6 @@ impl<'a> SuffixTree<'a> {
                     });
 
                 } else { // r3
-                    let node = unsafe { active_point.node.as_ref() };
                     active_point.follow_suffix();
                 }
             }
@@ -558,6 +547,11 @@ mod tests {
     }
 
     #[test]
+    ///      * abc$
+    ///     /
+    /// root -* ab$
+    ///     \
+    ///      * c$
     fn no_repeats() {
         let data = "abc";
         let tree = SuffixTree::new(data);
@@ -681,7 +675,6 @@ mod tests {
         // active_point.split_node(b'a', b'x', current_end.clone());
         // end split
 
-
         // let key = b'c';
         // let byte = &key;
         // let mut tr = trace.object(format!("`{}` `{}`", *byte as char, *byte).as_ref());
@@ -694,14 +687,10 @@ mod tests {
     }
 
     #[test]
+    /// Tests splitting a leaf node and linking between splitted nodes.
+    ///
+    /// assets/utils/string/two_repeats.dot
     fn two_repeats() {
-        // unsafe {
-        //     TR = match Trace::new("/tmp/two_repeats") {
-        //         Ok(x) => Some(x),
-        //         Err(e) => panic!("OMG {}", e),
-        //     };
-        // }
-
         let data = "abcabx";
         let tree = SuffixTree::new(data);
         let expected_endptr = Rc::new(RefCell::new(data.len()));

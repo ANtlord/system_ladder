@@ -1,0 +1,33 @@
+digraph {
+	rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
+    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
+
+    subgraph cluster_0 {
+        0
+
+        r0 -> r0a [label="abcab"]
+        r0 -> r0b [label="bcab"]
+        r0 -> r0c [label="cab"]
+    }
+
+    subgraph cluster_1 {
+        1
+
+        r1 -> r1a [label="ab"]
+        r1a -> r1ac [label="cabx"]
+        r1a -> r1ax [label="x"]
+
+        r1 -> r1b [label="b"]
+        r1b -> r1bc [label="cabx"]
+        r1b -> r1bx [label="x"]
+
+        r1 -> r1c [label="cabx"]
+        r1 -> r1x [label="x"]
+
+        r1a -> r1b [style="dashed" constraint=false]
+    }
+
+    0 -> 1 [style="invis"]
+    0, 1 [style="invis"]
+}
