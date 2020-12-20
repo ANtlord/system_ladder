@@ -1,6 +1,5 @@
 digraph {
 	rankdir="LR";  // horizontal layout
-    // labelfontsize="6"
     node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
     edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
 

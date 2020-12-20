@@ -199,18 +199,33 @@ impl<'a> ActivePoint<'a> {
         // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
     }
 
-    fn add_node(&mut self, for_letter: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
-        dbg!(for_letter as char);
+    /// Adds a child node to the current one at `at`.
+    ///
+    /// This method is invoked when the current node is inner node or it's root. The new child node
+    /// carries suffix starts from `current_end`
+    fn add_node(&mut self, at: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
+        dbg!(at as char);
         let mut noderef = unsafe { self.node.as_mut() };
         let loc = *current_end.borrow();
         let len = Rc::new(RefCell::new(self.root.data.len()));
         let weak = Rc::downgrade(&len);
         let ch = Child::new(self.root.data, loc, weak);
-        noderef.nodes[for_letter as usize] = ch;
+        noderef.nodes[at as usize] = ch;
         noderef
     }
 
-    // `at` points to the node to split.
+    /// Splits a child node at `at` of the current node.
+    ///
+    /// It replaces the old child node at `at` by the new one. The new child node carries suffix from the
+    /// begginning of the old child node consists of as much letter as designed in `self.length`.
+    ///
+    /// The new child node has two child nodes (which are grandchild nodes for the current one).
+    /// The first one carries suffix from end of the new child node to the end of the old child
+    /// node. The suffix can the rest of the word.
+    /// The second one carries suffix from the current handled letter to the end of the word.
+    ///
+    /// Render assets/utils/string/split_node.dot to get the picture. Gray nodes don't make
+    /// any sense they are just for consistence. Black nodes are affected nodes.
     fn split_node(&mut self, at: u8, for_letter: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
         let at = at as usize;
         let old_node = {
@@ -235,9 +250,8 @@ impl<'a> ActivePoint<'a> {
         let to = node.finished_at();
         debug_assert!(active_length < to);
         let current_end_ptr = current_end.borrow();
-        let from = node.from;
-        let key = from + active_length;
-        let mut new_node = Node::inner(input, from, key);
+        let key = node.from + active_length;
+        let mut new_node = Node::inner(input, node.from, key);
         let left_end = Rc::new(RefCell::new(node.to));
         let right_end = Rc::new(RefCell::new(self.root.data.len()));
         let (mut left, right) = (
