@@ -1,3 +1,4 @@
+use std::io;
 use std::ptr::null_mut;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -7,9 +8,13 @@ use std::ptr::NonNull;
 use std::marker::Copy;
 use std::mem;
 use std::fmt;
+
 use crate::tprintln;
+use crate::trace::Trace;
 
 const END: u8 = b'0';
+
+static mut TR: Option<Trace> = None;
 
 /// print which passes through cache. It's very handy you corrupt memory.
 fn diprint(val: impl AsRef<str>) {
@@ -291,12 +296,6 @@ impl<'a> ActivePoint<'a> {
         self.root.as_ref() as *const _ == self.node.as_ptr() as * const _
     }
 }
-
-use crate::trace::Trace;
-use crate::trace::Tracable;
-use std::io;
-
-static mut TR: Option<Trace> = None;
 
 impl<'a> SuffixTree<'a> {
     fn new<T: AsRef<str> + ?Sized>(input: &'a T) -> Self {
