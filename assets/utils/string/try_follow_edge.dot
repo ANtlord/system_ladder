@@ -1,0 +1,39 @@
+digraph G {
+    label="Input is `abcabxabd`. Currently inserting `abd`. Red node is the current one";
+
+    rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.08" fillcolor="black" style="filled"];
+    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"];
+
+    subgraph cluster_0 {
+        0
+        label="initial"
+        r1 [fillcolor="red"]
+        r1 -> r1a [label="ab"]
+        r1a -> r1ac [label="cabxabcabd"]
+        r1a -> r1ax [label="xabcabd"]
+    }
+
+    subgraph cluster_1 {
+        1
+        label="follow edge. At this point we need to insert only `d` instead of `abd`"
+        r2a [fillcolor="red"]
+        r2 -> r2a [label="ab"]
+        r2a -> r2ac [label="cabxabcabd"]
+        r2a -> r2ax [label="xabcabd"]
+    }
+
+    subgraph cluster_2 {
+        2
+        label="insert `d`"
+        r3a [fillcolor="red"]
+        r3 -> r3a [label="ab"]
+        r3a -> r3ac [label="cabxabcabd"]
+        r3a -> r3ax [label="xabcabd"]
+        r3a -> r3ad [label="d"]
+    }
+
+    0 -> 1 -> 2 [style="invis"]
+    0, 1, 2 [style="invis"]
+
+}

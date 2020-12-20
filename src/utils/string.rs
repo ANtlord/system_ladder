@@ -180,7 +180,19 @@ impl<'a> ActivePoint<'a> {
         self.root.data.as_bytes()[self.length + node.from] == for_letter
     }
 
-    // move further if the active point is in the end of the its edge.
+    /// Move further if the active length is in the end of the its edge. 
+    /// 
+    /// It happends when we need to insert a suffix longer than the suffix which the child
+    /// node of the current one carries. 
+    ///
+    /// Moving means:
+    /// - Reduce the active length by length of suffix of the proper child of the current node.
+    /// - Change the active edge (which is actualy a symbol) to that one which the current suffix
+    /// ends before.
+    /// - Change the current active node to the child node.
+    ///
+    /// Render assets/utils/string/split_node.dot. It shows how moving works and reasong why it is
+    /// needed.
     fn try_follow_edge(&mut self) -> bool {
         // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
         let key = self.edge.take().unwrap();
