@@ -69,7 +69,7 @@ impl<'a> Default for Link<'a> {
 struct Child<'a>(Option<Box<Node<'a>>>);
 
 impl<'a> Child<'a> {
-    fn new(data: &'a str, from: usize, to: Weak<RefCell<usize>>) -> Self {
+    fn new(data: &'a str, from: usize, to: usize) -> Self {
         Self(Some(Node::boxed(data, from, to)))
     }
 }
@@ -89,9 +89,7 @@ struct Node<'a> {
 }
 
 impl<'a> Node<'a> {
-    fn new(data: &'a str, from: usize, to: Weak<RefCell<usize>>) -> Self {
-        let to = *to.upgrade().unwrap().borrow();
-        //debug_assert_ne!(from, to);
+    fn new(data: &'a str, from: usize, to: usize) -> Self {
         Self {data, from, to, nodes: make_children(), suffix_link: Link::default()}
     }
 
@@ -99,7 +97,7 @@ impl<'a> Node<'a> {
         Self {data, from, to, nodes: make_children(), suffix_link: Link::default()}
     }
 
-    fn boxed(data: &'a str, from: usize, to: Weak<RefCell<usize>>) -> Box<Self> {
+    fn boxed(data: &'a str, from: usize, to: usize) -> Box<Self> {
         let ret = Box::new(Self::new(data, from, to));
         ret
     }
@@ -132,11 +130,9 @@ struct ActivePoint<'a> {
     root: Box<Node<'a>>,
 }
 
-
 impl<'a> ActivePoint<'a> {
     fn new(data: &'a str) -> Self {
-        let root_to_ptr = Rc::new(RefCell::new(ROOT_TO));
-        let mut root = Box::new(Node::new(data, 0, Rc::downgrade(&root_to_ptr)));
+        let mut root = Box::new(Node::new(data, 0, ROOT_TO));
         dbg!(root.as_ref() as *const _);
         Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root }
     }
@@ -205,9 +201,7 @@ impl<'a> ActivePoint<'a> {
         dbg!(at as char);
         let mut noderef = unsafe { self.node.as_mut() };
         let loc = *current_end.borrow();
-        let len = Rc::new(RefCell::new(self.root.data.len()));
-        let weak = Rc::downgrade(&len);
-        let ch = Child::new(self.root.data, loc, weak);
+        let ch = Child::new(self.root.data, loc, self.root.data.len());
         noderef.nodes[at as usize] = ch;
         noderef
     }
@@ -250,11 +244,9 @@ impl<'a> ActivePoint<'a> {
         let current_end_ptr = current_end.borrow();
         let key = node.from + active_length;
         let mut new_node = Node::inner(input, node.from, key);
-        let left_end = Rc::new(RefCell::new(node.to));
-        let right_end = Rc::new(RefCell::new(self.root.data.len()));
         let (mut left, right) = (
-            Node::new(input, key, Rc::downgrade(&left_end)),
-            Node::new(input, *current_end_ptr, Rc::downgrade(&right_end)),
+            Node::new(input, key, node.to),
+            Node::new(input, *current_end_ptr, self.root.data.len()),
         );
 
         left.nodes = node.nodes;
