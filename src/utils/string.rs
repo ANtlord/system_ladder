@@ -1,4 +1,5 @@
 use std::io;
+use std::io::Write;
 use std::ptr::null_mut;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -12,7 +13,8 @@ use std::fmt;
 use crate::tprintln;
 use crate::trace::Trace;
 
-const END: u8 = b'0';
+const END: u8 = b'\0';
+const ROOT_TO: usize = 0;
 
 static mut TR: Option<Trace> = None;
 
@@ -66,8 +68,6 @@ impl<'a> Default for Link<'a> {
 
 struct Child<'a>(Option<Box<Node<'a>>>);
 
-use std::io::Write;
-
 impl<'a> Child<'a> {
     fn new(data: &'a str, from: usize, to: Weak<RefCell<usize>>) -> Self {
         Self(Some(Node::boxed(data, from, to)))
@@ -80,18 +80,10 @@ impl<'a> From<Node<'a>> for Child<'a> {
     }
 }
 
-#[cfg_attr(test, derive(Clone))]
-enum Position {
-    Ptr(Weak<RefCell<usize>>),
-    Data(usize),
-}
-
-const ROOT_TO: usize = 0;
-
 struct Node<'a> {
     data: &'a str,
     from: usize,
-    to: usize, // 0 for root
+    to: usize, // 0 for root, data.len() for a leaf
     nodes: [Child<'a>; 256],
     suffix_link: Link<'a>,
 }
@@ -393,25 +385,6 @@ impl<'a> fmt::Debug for Node<'a> {
     }
 }
 
-#[cfg(debug_assertions)]
-impl fmt::Debug for Position {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Position::Ptr(weak) => {
-                let value = match weak.upgrade() {
-                    Some(x) => format!("{}", x.borrow()),
-                    None => "dangling".to_owned(),
-                };
-
-                f.write_fmt(format_args!("Position(Weak({}))", value.as_str()))
-            }
-            Position::Data(x) => f.write_fmt(format_args!("Position(Data({}))", x)),
-        }
-    }
-}
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,22 +435,6 @@ mod tests {
         }
     }
 
-
-    impl PartialEq for Position {
-        fn eq(&self, other: &Self) -> bool {
-            if let (Position::Data(left), Position::Data(right)) = (self, other) {
-                return left == right;
-            }
-
-            if let (Position::Ptr(left), Position::Ptr(right)) = (self, other) {
-                if let (Some(left), Some(right)) = (left.upgrade(), right.upgrade()) {
-                    return left == right;
-                }
-            }
-
-            return false;
-        }
-    }
 
     impl<'a> PartialEq for Link<'a> {
         fn eq(&self, other: &Self) -> bool {
