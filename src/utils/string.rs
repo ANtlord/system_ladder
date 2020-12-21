@@ -98,8 +98,7 @@ impl<'a> Node<'a> {
     }
 
     fn boxed(data: &'a str, from: usize, to: usize) -> Box<Self> {
-        let ret = Box::new(Self::new(data, from, to));
-        ret
+        Box::new(Self::new(data, from, to))
     }
 
     fn len(&self) -> usize {
@@ -133,7 +132,6 @@ struct ActivePoint<'a> {
 impl<'a> ActivePoint<'a> {
     fn new(data: &'a str) -> Self {
         let mut root = Box::new(Node::new(data, 0, ROOT_TO));
-        dbg!(root.as_ref() as *const _);
         Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root }
     }
 
@@ -176,13 +174,11 @@ impl<'a> ActivePoint<'a> {
     /// Render assets/utils/string/split_node.dot. It shows how moving works and reasong why it is
     /// needed.
     fn try_follow_edge(&mut self) -> bool {
-        // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
         let key = self.edge.take().unwrap();
         let noderef: &Node = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
         if self.length >= node.len() {
             self.length -= node.len();
-            dbg!(&noderef, node, key as char);
             self.edge = Some(self.root.data.as_bytes()[node.to]);
             self.node = NonNull::from(node.as_ref());
             true
@@ -190,7 +186,6 @@ impl<'a> ActivePoint<'a> {
             self.edge = Some(key);
             false
         }
-        // dbg!(self.root.as_ref() as *const _, &self.root.nodes[b'a' as usize].0);
     }
 
     /// Adds a child node to the current one at `at`.
@@ -198,7 +193,6 @@ impl<'a> ActivePoint<'a> {
     /// This method is invoked when the current node is inner node or it's root. The new child node
     /// carries suffix starts from `current_end`
     fn add_node(&mut self, at: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
-        dbg!(at as char);
         let mut noderef = unsafe { self.node.as_mut() };
         let loc = *current_end.borrow();
         let ch = Child::new(self.root.data, loc, self.root.data.len());
@@ -222,7 +216,6 @@ impl<'a> ActivePoint<'a> {
         let at = at as usize;
         let old_node = {
             let mut noderef = unsafe { self.node.as_mut() };
-            dbg!(at as u8 as char, noderef as *const _, &noderef.nodes[at].0, &self.root);
             noderef.nodes[at].0.take().unwrap()
         };
 
@@ -234,15 +227,10 @@ impl<'a> ActivePoint<'a> {
 
     fn _split_node(&self, node: Node<'a>, for_letter: u8, current_end: Rc<RefCell<usize>>) -> Node<'a> {
         let input = self.root.data;
-        let active_length = self.length;
-        // if node.from == 0 {
-        //     dbg!(&node, active_length);
-        // }
-
         let to = node.finished_at();
-        debug_assert!(active_length < to);
+        debug_assert!(self.length < to);
         let current_end_ptr = current_end.borrow();
-        let key = node.from + active_length;
+        let key = node.from + self.length;
         let mut new_node = Node::inner(input, node.from, key);
         let (mut left, right) = (
             Node::new(input, key, node.to),
@@ -258,7 +246,6 @@ impl<'a> ActivePoint<'a> {
 
     fn follow_suffix(&mut self) {
         let noderef = unsafe { self.node.as_ref() };
-        dbg!(&noderef);
         self.node = match noderef.suffix_link.0 {
             Some(ref x) => *x,
             None => NonNull::from(self.root.as_ref()),
@@ -278,12 +265,7 @@ impl<'a> SuffixTree<'a> {
         'outer: for (i, byte) in input.as_ref().as_bytes().iter().chain(&[END]).enumerate() {
             *current_end.borrow_mut() = i;
             let mut last_created_node = Link::default();
-            dbg!(*byte as char);
-            // let key = *active_point.edge.get_or_insert(*byte);
             remainder += 1;
-            // move to the new edge every time when a suffix being inserted is encountered.
-            // Current algorithm doesn't cover case when suffix being inserted after insertion.
-            dbg!(remainder);
             while remainder > 0 {
                 debug_assert!(active_point.length <= remainder);
                 let key = if active_point.length == 0 {
@@ -293,8 +275,6 @@ impl<'a> SuffixTree<'a> {
                     active_point.edge.unwrap()
                 };
 
-                //let key = dbg!(*active_point.edge.get_or_insert(*byte));
-                dbg!(key as char);
                 let inserted_node_link: Link = if dbg!(!active_point.has_child(key)) {
                     active_point.add_node(key, current_end.clone()).into()
                 } else if dbg!(active_point.try_follow_edge()) {
@@ -317,13 +297,11 @@ impl<'a> SuffixTree<'a> {
                     last_created_node = inserted_node_link;
                 }
 
-                // last_created_node = inserted_node_link;
                 remainder -= 1;
                 if dbg!(active_point.is_at_root() && active_point.length > 0) { // r1
-                    dbg!(active_point.length, remainder);
                     active_point.length -= 1;
                     let current_end_ptr = current_end.borrow();
-                    let loc = *current_end_ptr - remainder + 1;//active_point.length;
+                    let loc = *current_end_ptr - remainder + 1;
                     active_point.edge = Some(if input.as_ref().len() == loc {
                         END
                     } else {
@@ -382,18 +360,6 @@ mod tests {
     use super::*;
     use std::fmt;
 
-    // impl<'a> Clone for Node<'a> {
-    //     fn clone(&self) -> Self {
-    //         Self {
-    //             data: self.data,
-    //             from: self.from,
-    //             to: self.to,
-    //             nodes: self.nodes.clone(),
-    //             suffix_link: self.suffix_link.clone(),
-    //         }
-    //     }
-    // }
-
     fn clone_leaf<'a>(from: &Child<'a>) -> Child<'a> {
         Child(from.0.as_ref().map(|from| {
             Box::new(Node {
@@ -416,7 +382,6 @@ mod tests {
             Self { nodes: make_children() }
         }
 
-        // fn add(&mut self, key: char, from: usize, to: Position, suffix_link: Link<'a>, nodes: [Child<'a>; 256]) -> &mut Self {
         fn add(mut self, key: char, value: Node<'a>) -> Self {
             self.nodes[key as usize] = value.into();
             self
@@ -426,7 +391,6 @@ mod tests {
             self.nodes
         }
     }
-
 
     impl<'a> PartialEq for Link<'a> {
         fn eq(&self, other: &Self) -> bool {
