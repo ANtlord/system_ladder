@@ -192,10 +192,9 @@ impl<'a> ActivePoint<'a> {
     ///
     /// This method is invoked when the current node is inner node or it's root. The new child node
     /// carries suffix starts from `current_end`
-    fn add_node(&mut self, at: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
+    fn add_node(&mut self, at: u8, current_end: usize) -> &Node<'a> {
         let mut noderef = unsafe { self.node.as_mut() };
-        let loc = *current_end.borrow();
-        let ch = Child::new(self.root.data, loc, self.root.data.len());
+        let ch = Child::new(self.root.data, current_end, self.root.data.len());
         noderef.nodes[at as usize] = ch;
         noderef
     }
@@ -212,7 +211,7 @@ impl<'a> ActivePoint<'a> {
     ///
     /// Render assets/utils/string/split_node.dot to get the picture. Gray nodes don't make
     /// any sense they are just for consistence. Black nodes are affected nodes.
-    fn split_node(&mut self, at: u8, for_letter: u8, current_end: Rc<RefCell<usize>>) -> &Node<'a> {
+    fn split_node(&mut self, at: u8, for_letter: u8, current_end: usize) -> &Node<'a> {
         let at = at as usize;
         let old_node = {
             let mut noderef = unsafe { self.node.as_mut() };
@@ -225,16 +224,15 @@ impl<'a> ActivePoint<'a> {
         noderef.nodes[at].0.as_ref().unwrap()
     }
 
-    fn _split_node(&self, node: Node<'a>, for_letter: u8, current_end: Rc<RefCell<usize>>) -> Node<'a> {
+    fn _split_node(&self, node: Node<'a>, for_letter: u8, current_end: usize) -> Node<'a> {
         let input = self.root.data;
         let to = node.finished_at();
         debug_assert!(self.length < to);
-        let current_end_ptr = current_end.borrow();
         let key = node.from + self.length;
         let mut new_node = Node::inner(input, node.from, key);
         let (mut left, right) = (
             Node::new(input, key, node.to),
-            Node::new(input, *current_end_ptr, self.root.data.len()),
+            Node::new(input, current_end, self.root.data.len()),
         );
 
         left.nodes = node.nodes;
@@ -259,11 +257,9 @@ impl<'a> ActivePoint<'a> {
 
 impl<'a> SuffixTree<'a> {
     fn new<T: AsRef<str> + ?Sized>(input: &'a T) -> Self {
-        let current_end = Rc::new(RefCell::new(0usize));
         let mut active_point = ActivePoint::new(input.as_ref());
         let mut remainder = 0; // how many nodes should be inserted.
         'outer: for (i, byte) in input.as_ref().as_bytes().iter().chain(&[END]).enumerate() {
-            *current_end.borrow_mut() = i;
             let mut last_created_node = Link::default();
             remainder += 1;
             while remainder > 0 {
@@ -276,7 +272,7 @@ impl<'a> SuffixTree<'a> {
                 };
 
                 let inserted_node_link: Link = if dbg!(!active_point.has_child(key)) {
-                    active_point.add_node(key, current_end.clone()).into()
+                    active_point.add_node(key, i).into()
                 } else if dbg!(active_point.try_follow_edge()) {
                     continue;
                 } else if active_point.is_prefix(key, *byte) {
@@ -284,12 +280,11 @@ impl<'a> SuffixTree<'a> {
                     let link = Link(Some(active_point.node));
                     if !active_point.is_root(link) {
                         last_created_node.set_suffix(link);
-                        last_created_node = link;
                     }
 
                     continue 'outer;
                 } else {
-                    active_point.split_node(key, *byte, current_end.clone()).into()
+                    active_point.split_node(key, *byte, i).into()
                 };
 
                 if !active_point.is_root(inserted_node_link) {
@@ -300,12 +295,11 @@ impl<'a> SuffixTree<'a> {
                 remainder -= 1;
                 if dbg!(active_point.is_at_root() && active_point.length > 0) { // r1
                     active_point.length -= 1;
-                    let current_end_ptr = current_end.borrow();
-                    let loc = *current_end_ptr - remainder + 1;
-                    active_point.edge = Some(if input.as_ref().len() == loc {
+                    let next_byte_position_to_insert = i - remainder + 1;
+                    active_point.edge = Some(if input.as_ref().len() == next_byte_position_to_insert {
                         END
                     } else {
-                        input.as_ref().as_bytes()[loc]
+                        input.as_ref().as_bytes()[next_byte_position_to_insert]
                     });
 
                 } else { // r3
@@ -521,7 +515,7 @@ mod tests {
         }
 
         let mut trace = unsafe {TR.as_mut().unwrap()};
-        let current_end = Rc::new(RefCell::new(0usize));
+        let mut current_end = 0usize;
 
         let input = "ababx";
 
@@ -530,24 +524,24 @@ mod tests {
         {
             let key = b'a';
             let byte = &key;
-            *current_end.borrow_mut() += 1;
+            current_end += 1;
             active_point.edge = Some(*byte);
             let mut last_created_node = Link::default();
             let mut tr = trace.object(format!("`{}` `{}`", *byte as char, *byte).as_ref());
-            let node: &Node = active_point.add_node(key, current_end.clone());
+            let node: &Node = active_point.add_node(key, current_end);
             let inserted_node_link = node.into();
             last_created_node.set_suffix(inserted_node_link);
             last_created_node = inserted_node_link;
         }
 
         {
-            *current_end.borrow_mut() += 1;
+            current_end += 1;
             let mut last_created_node = Link::default();
             let key = b'b';
             let byte = &key;
             active_point.edge = Some(*byte);
             let mut tr = trace.object(format!("`{}` `{}`", *byte as char, *byte).as_ref());
-            let node: &Node = active_point.add_node(key, current_end.clone());
+            let node: &Node = active_point.add_node(key, current_end);
             let inserted_node_link = node.into();
             last_created_node.set_suffix(inserted_node_link);
             last_created_node = inserted_node_link;
@@ -555,22 +549,22 @@ mod tests {
 
         {
             let mut last_created_node = Link::default();
-            *current_end.borrow_mut() += 1;
+            current_end += 1;
             active_point.length += 1;
         }
 
         {
             let mut last_created_node = Link::default();
-            *current_end.borrow_mut() += 1;
+            current_end += 1;
             active_point.length += 1;
         }
 
         {
             let mut last_created_node = Link::default();
-            *current_end.borrow_mut() += 1;
+            current_end += 1;
             let key = b'a';
             let byte = &key;
-            let node = active_point.split_node(key, *byte, current_end.clone());
+            let node = active_point.split_node(key, *byte, current_end);
             let inserted_node_link = node.into();
             last_created_node.set_suffix(inserted_node_link);
             last_created_node = inserted_node_link;
@@ -580,7 +574,7 @@ mod tests {
 
             let key = b'a';
             let byte = &key;
-            let node = active_point.split_node(key, *byte, current_end.clone());
+            let node = active_point.split_node(key, *byte, current_end);
             let inserted_node_link: Link = node.into();
             last_created_node.set_suffix(inserted_node_link);
             last_created_node = inserted_node_link;
