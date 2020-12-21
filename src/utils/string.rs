@@ -37,7 +37,6 @@ desktop publishing software like Aldus PageMaker including versions of Lorem Ips
 /// Ukkonen's algorithm
 struct SuffixTree<'a> {
     root: Node<'a>,
-    to: Rc<RefCell<usize>>,
 }
 
 // pub struct Link<'a>(Cell<*mut Node<'a>>);
@@ -353,7 +352,7 @@ impl<'a> SuffixTree<'a> {
             }
         }
 
-        Self{root: *active_point.root, to: current_end}
+        Self{root: *active_point.root}
     }
 
     fn find(&self, pattern: &str) -> Option<usize> {
@@ -593,7 +592,6 @@ mod tests {
                     .run(),
                 suffix_link: Link::default(),
             },
-            to: Rc::new(RefCell::new(data.len())),
         };
 
         test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
@@ -758,7 +756,6 @@ mod tests {
                     .run(),
                 suffix_link: Link::default(),
             },
-            to: Rc::new(RefCell::new(data.len())),
         };
 
         {
@@ -898,7 +895,6 @@ mod tests {
                     .run(),
                 suffix_link: Link::default(),
             },
-            to: Rc::new(RefCell::new(data.len())),
         };
 
         link_inner_nodes(&mut expected_tree.root.nodes, &[b'a'], &[b'b']);
@@ -1021,7 +1017,6 @@ mod tests {
                         .run(),
                     suffix_link: Link::default(),
                 },
-                to: expected_endptr,
             };
 
             test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
@@ -1062,7 +1057,6 @@ mod tests {
                         }).run(),
                         suffix_link: Link::default(),
                 },
-                to: expected_endptr,
             };
 
             test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
@@ -1129,7 +1123,6 @@ mod tests {
                     .run(),
                 suffix_link: Link::default(),
             },
-            to: Rc::new(RefCell::new(data.len())),
         };
 
         link_inner_nodes(&mut expected_tree.root.nodes, &[b'a'], &[b'b']);
@@ -1251,7 +1244,6 @@ mod tests {
                     .run(),
                 suffix_link: Link::default(),
             },
-            to: Rc::new(RefCell::new(data.len())),
         };
 
         link_inner_nodes(&mut expected_tree.root.nodes, &[b'a', b'n'], &[b'n']);
