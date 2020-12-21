@@ -1032,6 +1032,7 @@ mod tests {
         }
 
         #[test]
+        /// This test case seems redudant as it's covers the same as `undefined_repeat` test case.
         fn pair_of_letters() {
             let data = "dd";
             let tree = SuffixTree::new(data);
@@ -1069,6 +1070,9 @@ mod tests {
     }
 
     #[test]
+    /// tests insertion of last unprocessed repeat.
+    ///
+    /// assets/utils/string/undefined_repeat.dot
     fn undefined_repeat() {
         let data = "abab";
         let tree = SuffixTree::new(data);
@@ -1177,12 +1181,14 @@ mod tests {
     /// If don't create the link on this step then we will lose `nz` suffix` after inserting `anz`
     /// because the `an` will not have the suffix link. This particular input simply crashes if
     /// don't do this thing.
+    ///
+    /// assets/utils/string/post_suffix_linking.dot
     fn post_suffix_linking() {
-        // assets/utils/string/post_suffix_linking.dot
         let tree = SuffixTree::new("anxnyanyanz");
     }
 
     #[test]
+    /// Doesn't test extension of inner node.
     fn inner_node_split() {
         let data = "banana";
         let tree = SuffixTree::new(data);
