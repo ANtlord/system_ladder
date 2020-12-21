@@ -942,10 +942,17 @@ mod tests {
         use super::*;
 
         #[test]
+        /// Tests adding a node from a splitted one.
+        ///
+        /// The `a` node of the root is splitted when `d` is processed. Then processing `a` the
+        /// algorithm follows `a` node of the root (reducing active length). Then processing `k` it
+        /// extends the `a` node.
+        ///
+        /// assets/utils/string/inner_extension/without_suffix.dot
         fn without_suffix() {
             let data = "abcadak";
             let tree = SuffixTree::new(data);
-            let expected_endptr = Rc::new(RefCell::new(7));
+            let expected_endptr = Rc::new(RefCell::new(data.len()));
 
             let mut expected_tree = SuffixTree{
                 root: Node {
@@ -1284,6 +1291,11 @@ mod tests {
 
         //     #[test]
         //     fn false_negative(){}
+    }
+
+    mod longest_repated_substring {
+        fn basic() {
+        }
     }
 
     // #[test]
