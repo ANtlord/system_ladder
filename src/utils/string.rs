@@ -135,6 +135,18 @@ impl<'a> ActivePoint<'a> {
         Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root }
     }
 
+    /// Updates active length and links last node which was splitted or a new node created from.
+    ///
+    /// This is required for a case when the current was splitted before the `last_created_node`.
+    /// See `post_suffix_linking` test.
+    fn update(&mut self, last_created_node: &mut Link<'a>) {
+        self.length += 1;
+        let link = Link(Some(self.node));
+        if !self.is_root(link) {
+            last_created_node.set_suffix(link);
+        }
+    }
+
     /// Checks if the current node has a child at `key`.
     fn has_child(&self, key: u8) -> bool {
         // probable redudant check.
@@ -276,12 +288,7 @@ impl<'a> SuffixTree<'a> {
                 } else if dbg!(active_point.try_follow_edge()) {
                     continue;
                 } else if active_point.is_prefix(key, *byte) {
-                    active_point.length += 1;
-                    let link = Link(Some(active_point.node));
-                    if !active_point.is_root(link) {
-                        last_created_node.set_suffix(link);
-                    }
-
+                    active_point.update(&mut last_created_node);
                     continue 'outer;
                 } else {
                     active_point.split_node(key, *byte, i).into()
