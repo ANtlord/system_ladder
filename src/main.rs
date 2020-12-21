@@ -12,6 +12,7 @@ mod fs;
 mod container;
 mod random;
 mod graph;
+mod trace;
 #[macro_use]
 mod macros;
 

@@ -1,0 +1,28 @@
+digraph {
+	rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
+    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
+
+    r -> ra [label="an"]
+    ra -> rax [label="xnyanyanz"]
+    ra -> ray [label="yanz"]
+    ra -> raz [label="z"]
+
+    r -> rn [label="n"]
+    rn -> rnx [label="xnyanyanz"]
+    rn -> rnz [label="z", color="orange"] // can be missed
+    rn -> rny [label="yan"]
+    rny -> rnyz [label="z"]
+    rny -> rnyy [label="yanz"]
+
+    r -> rx [label="xnyanyanz"]
+
+    r -> ry [label="yan"]
+    ry -> ryz [label="z"]
+    ry -> ryy [label="yanz"]
+
+    r -> rz [label="z"]
+
+    rny -> ry [style="dashed" constraint=false]
+    ra -> rn [style="dashed" constraint=false, color="orange"]
+}

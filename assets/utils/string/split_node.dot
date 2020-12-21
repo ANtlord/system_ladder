@@ -1,0 +1,45 @@
+digraph G {
+    rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.08" fillcolor="black" style="filled"];
+    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"];
+
+    subgraph cluster_leaf {
+
+        subgraph cluster11 {
+            r11 [fillcolor=gray]
+            label="before splitting a leaf node";
+            r11 -> a11 [label="ababx$"];
+        }
+
+        subgraph cluster12 {
+            r12 [fillcolor=gray]
+            label="after splitting a leaf node";
+            r12 -> a12 [label="ab"];
+            a12 -> aa12 [label="abx$"];
+            a12 -> xa12 [label="x$"];
+        }
+
+    }
+
+    subgraph cluster_inner {
+
+        subgraph cluster21 {
+            r21, aa21, xa21 [fillcolor=gray]
+            label="**before** splitting a leaf node";
+            r21 -> a21 [label="ana"];
+            a21 -> aa21 [label="na$"];
+            a21 -> xa21 [label="$"];
+        }
+
+        subgraph cluster22 {
+            r22, ann22, an_22 [fillcolor=gray]
+            label="**after** splitting a leaf node";
+            r22 -> a22 [label="a"];
+            a22 -> a_22 [label="$"];
+            a22 -> an22 [label="na"];
+            an22 -> ann22 [label="na$"];
+            an22 -> an_22 [label="$"];
+        }
+
+    }
+}

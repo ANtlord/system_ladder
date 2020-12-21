@@ -1,0 +1,55 @@
+digraph {
+	rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
+    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
+
+    subgraph cluster_1 {
+        1
+
+        r1 -> r1a [label="ab"]
+        r1a -> r1ac [label="cabxabc"]
+        r1a -> r1ax [label="xabc"]
+
+        r1 -> r1b [label="b"]
+        r1b -> r1bc [label="cabxabc"]
+        r1b -> r1bx [label="xabc"]
+
+        r1 -> r1c [label="cabxabc"]
+        r1 -> r1x [label="xabc"]
+
+        r1a -> r1b [style="dashed" constraint=false]
+    }
+
+    subgraph cluster_2 {
+        2
+
+        r2 -> r2a [label="ab"]
+        r2a -> r2ac [label="c"]
+        r2a -> r2ax [label="xabcd"]
+
+        r2ac -> r2acd [label="d"]
+        r2ac -> r2aca [label="abxabcd"]
+
+        r2 -> r2b [label="b"]
+        r2b -> r2bc [label="c"]
+        r2b -> r2bx [label="xabcd"]
+
+        r2bc -> r2bcd [label="d"]
+        r2bc -> r2bca [label="abxabcd"]
+
+        r2 -> r2c [label="c"]
+        r2c -> r2cd [label="d"]
+        r2c -> r2ca [label="abxabcd"]
+
+        r2 -> r2x [label="xabcd"]
+        r2 -> r2d [label="d"]
+
+        r2a -> r2b [style="dashed" constraint=false penwidth="0.6"]
+        r2ac -> r2bc [style="dashed" constraint=false penwidth="0.6"]
+        r2bc -> r2c [style="dashed" constraint=false penwidth="0.6"]
+    }
+
+    1 -> 2 [style="invis"]
+    1, 2 [style="invis"]
+
+}
