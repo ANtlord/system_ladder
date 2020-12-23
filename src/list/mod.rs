@@ -13,7 +13,7 @@ pub struct List<T> {
     tail: Link<T>,
 }
 
-// TODO: implement drop
+// FIXME: implement drop
 // TODO: implement iter_mut
 // TODO: implement len
 impl<T> List<T> {
@@ -29,7 +29,7 @@ impl<T> List<T> {
         List{head: Link::null(), tail: Link::null()}
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.tail.is_null()
     }
 

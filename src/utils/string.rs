@@ -5,6 +5,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
+use std::borrow::Borrow;
 use std::ptr::NonNull;
 use std::marker::Copy;
 use std::mem;
@@ -12,6 +13,7 @@ use std::fmt;
 
 use crate::tprintln;
 use crate::trace::Trace;
+use crate::container::Stack;
 
 const END: u8 = b'\0';
 const ROOT_TO: usize = 0;
@@ -230,27 +232,21 @@ impl<'a> ActivePoint<'a> {
             noderef.nodes[at].0.take().unwrap()
         };
 
-        let new_node = self._split_node(*old_node, for_letter, current_end);
+        let new_node = self._split_node(old_node, for_letter, current_end);
         let mut noderef = unsafe { self.node.as_mut() };
         noderef.nodes[at] = new_node.into();
         noderef.nodes[at].0.as_ref().unwrap()
     }
 
-    fn _split_node(&self, node: Node<'a>, for_letter: u8, current_end: usize) -> Node<'a> {
+    fn _split_node(&self, mut node: Box<Node<'a>>, for_letter: u8, current_end: usize) -> Node<'a> {
         let input = self.root.data;
         let to = node.finished_at();
         debug_assert!(self.length < to);
-        let key = node.from + self.length;
-        let mut new_node = Node::inner(input, node.from, key);
-        let (mut left, right) = (
-            Node::new(input, key, node.to),
-            Node::new(input, current_end, self.root.data.len()),
-        );
-
-        left.nodes = node.nodes;
-        left.suffix_link = node.suffix_link;
-        new_node.nodes[input.as_bytes()[key] as usize] = left.into();
-        new_node.nodes[for_letter as usize] = right.into();
+        let divide_suffix_at = node.from + self.length;
+        let mut new_node = Node::inner(input, node.from, divide_suffix_at);
+        node.from = divide_suffix_at;
+        new_node.nodes[input.as_bytes()[divide_suffix_at] as usize] = Child(Some(node)); // left.into();
+        new_node.nodes[for_letter as usize] = Node::new(input, current_end, self.root.data.len()).into();
         new_node
     }
 
@@ -318,29 +314,53 @@ impl<'a> SuffixTree<'a> {
         Self{root: *active_point.root}
     }
 
-    fn find(&self, pattern: &str) -> Option<usize> {
-        let mut count = 0;
-        let mut pattern_iter = pattern.as_bytes().iter();
-        let mut node: &Node = &self.root.nodes.get(*pattern_iter.next()? as usize)?.0.as_ref()?.as_ref();
-        dbg!(&self.root.data[node.from .. node.finished_at()]);
+    fn find<Byte: Borrow<u8>>(&self, mut pattern_iter: impl Iterator<Item=Byte>) -> Option<usize> {
+        let mut node = self.root.nodes.get(*pattern_iter.next()?.borrow() as usize)?.0.as_ref()?;
         let mut node_byte_count = 1;
+        let mut pattern_len = 1;
         for byte in pattern_iter {
             let mut text_index = node.from + node_byte_count;
             if text_index >= node.finished_at() {
-                node = node.nodes.get(*byte as usize)?.0.as_ref()?;
+                node = node.nodes.get(*byte.borrow() as usize)?.0.as_ref()?;
                 node_byte_count = 0;
                 text_index = node.from;
             }
 
-            if dbg!(self.root.data.as_bytes()[text_index]) != dbg!(*byte) {
-                dbg!(node, &self.root.data[node.from .. node.finished_at()]);
+            if self.root.data.as_bytes()[text_index] != *byte.borrow() {
                 return None;
             }
 
             node_byte_count += 1;
+            pattern_len += 1;
         }
 
-        Some(node.from + node_byte_count - pattern.len())
+        Some(node.from + node_byte_count - pattern_len)
+    }
+
+    fn is_leaf(&self, node: &Node) -> bool {
+        self.root.data.len() == node.to
+    }
+
+    fn longest_repeat(&self) -> &'a str {
+        let mut stack = Stack::new();
+        stack.push((&self.root, 0));
+        let (mut ret_from, mut repeat_len) = (0, 0);
+        while let Some((node, len)) = stack.pop() {
+            if self.is_leaf(node) {
+                let total_len = len - node.len();
+                if total_len > repeat_len {
+                    repeat_len = total_len;
+                    ret_from = node.from - repeat_len;
+                }
+
+                continue;
+            }
+
+            let children = node.nodes.iter().filter_map(|x| x.0.as_ref());
+            children.for_each(|x| stack.push((x, len + x.len())));
+        }
+
+        &self.root.data[ret_from .. ret_from + repeat_len]
     }
 }
 
@@ -1094,6 +1114,18 @@ mod tests {
         let tree = SuffixTree::new("anxnyanyanz");
     }
 
+
+    #[test]
+    /// This test case ensures that pointer to the last created node is still relevant after
+    /// splitting an inner node which the last created node is child of.
+    ///
+    /// assets/utils/string/suffix_link_from_recreated_node.dot
+    /// The red node on the second step changes its parent but it must keep its place in RAM to
+    /// keep last_created_node valid.
+    fn suffix_link_from_recreated_node() {
+        let tree = SuffixTree::new("GAAA");
+    }
+
     #[test]
     /// Doesn't test extension of inner node.
     fn inner_node_split() {
@@ -1189,28 +1221,59 @@ mod tests {
         use super::*;
 
         #[test]
-        fn true_positive(){
+        fn positive(){
+            let tree = SuffixTree::new("abcabx");
+            let position = tree.find("bx".bytes());
+            assert_eq!(position, Some(4));
+
+            let tree = SuffixTree::new("a");
+            let position = tree.find("a".bytes());
+            assert_eq!(position, Some(0));
+
             let tree = SuffixTree::new(LOREM_IPSUM);
-            let position = tree.find("dummy");
+            let position = tree.find("dummy".bytes());
             assert_eq!(position, Some(23));
         }
 
-        //     #[test]
-        //     fn true_negative(){}
+        #[test]
+        fn negative(){
+            let tree = SuffixTree::new(LOREM_IPSUM);
+            let position = tree.find("shadow".bytes());
+            assert_eq!(position, None);
 
-        //     #[test]
-        //     fn false_positive(){}
+            let tree = SuffixTree::new("");
+            let position = tree.find("some".bytes());
+            assert_eq!(position, None);
 
-        //     #[test]
-        //     fn false_negative(){}
-    }
-
-    mod longest_repated_substring {
-        fn basic() {
+            let tree = SuffixTree::new("abc");
+            let position = tree.find("ac".bytes());
+            assert_eq!(position, None);
         }
     }
 
-    // #[test]
-    // fn experiment() {
-    // }
+    mod longest_repeated_overlapped_substring {
+        use super::*;
+
+        #[test]
+        fn basic() {
+            let tree = SuffixTree::new("anxnyanyanz");
+            assert_eq!(tree.longest_repeat(), "nyan");
+
+            let tree = SuffixTree::new("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            assert_eq!(tree.longest_repeat(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+
+            let tree = SuffixTree::new("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG");
+            assert_eq!(tree.longest_repeat(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+
+            let tree = SuffixTree::new("AAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAA");
+            assert_eq!(tree.longest_repeat(), "AAAAAAAAAAAAAAAAAA");
+
+            let tree = SuffixTree::new(LOREM_IPSUM);
+            assert_eq!(tree.longest_repeat(), " Lorem Ipsum ");
+
+        }
+    }
+
+    #[test]
+    fn experiment() {}
 }

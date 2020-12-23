@@ -32,11 +32,19 @@ pub struct Stack<T> {
 }
 
 impl<T> Stack<T> {
+    pub fn new() -> Self {
+        Self { inner: List::new() }
+    }
+
     pub fn push(&mut self, v: T) {
         self.inner.push_back(v);
     }
 
     pub fn pop(&mut self) -> Option<T> {
         self.inner.pop_back()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
     }
 }

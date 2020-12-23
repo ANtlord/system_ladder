@@ -1,0 +1,52 @@
+digraph {
+	rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
+    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
+
+    subgraph cluster_0 {
+        0
+        label="remainder = 3, active_length = 2 (aa$)"
+
+        r0 -> r0a [label="aa"]
+
+        r0a -> r0aa  [label="a$"]
+        r0a -> r0a_ [label="$"]
+
+        r0a [fillcolor="red"]
+    }
+
+    subgraph cluster_1 {
+        1
+        label="remainder = 2, active_length = 1 (a$)"
+        r1 -> r1a [label="a"]
+
+        r1a -> r1aa  [label="a"]
+        r1a -> r1a_ [label="$"]
+
+        r1aa -> r1aaa  [label="a$"]
+        r1aa -> r1aa_ [label="$"]
+
+        r1aa [fillcolor="red"]
+        r1aa -> r1a [style="dashed" constraint=false]
+    }
+
+    subgraph cluster_2 {
+        2
+        label="remainder = 1, active_length = 0 ($)"
+        r2 -> r2a [label="a"]
+
+        r2a -> r2aa  [label="a"]
+        r2a -> r2a_ [label="$"]
+
+        r2aa -> r2aaa  [label="a$"]
+        r2aa -> r2aa_ [label="$"]
+
+        r2aa [fillcolor="red"]
+        r2aa -> r2a [style="dashed" constraint=false]
+
+        r2 -> r2_ [label="$"]
+    }
+
+    0, 1,2 [style="invis"]
+    0 -> 1 -> 2  [style="invis"]
+}
