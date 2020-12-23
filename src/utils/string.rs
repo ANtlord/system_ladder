@@ -37,8 +37,6 @@ the leap into electronic typesetting, remaining essentially unchanged. It was po
 desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
 "#;
 
-// when an unknown printer took a galley of type and scrambled it to make a type specimen book.
-/// Ukkonen's algorithm
 struct SuffixTree<'a> {
     root: Node<'a>,
 }
@@ -245,7 +243,7 @@ impl<'a> ActivePoint<'a> {
         let divide_suffix_at = node.from + self.length;
         let mut new_node = Node::inner(input, node.from, divide_suffix_at);
         node.from = divide_suffix_at;
-        new_node.nodes[input.as_bytes()[divide_suffix_at] as usize] = Child(Some(node)); // left.into();
+        new_node.nodes[input.as_bytes()[divide_suffix_at] as usize] = Child(Some(node));
         new_node.nodes[for_letter as usize] = Node::new(input, current_end, self.root.data.len()).into();
         new_node
     }
@@ -264,6 +262,55 @@ impl<'a> ActivePoint<'a> {
 }
 
 impl<'a> SuffixTree<'a> {
+    /// Ukkonen's algorithm is used to build a suffix tree.
+    ///
+    /// There are two loops. In the first one we go over bytes of input in the second one we insert
+    /// new nodes as long as we have symbols to insert. `remainder` is the counter of the symbols. A
+    /// node doesn't carry actual symbols but a string view (pair of pointers represents a piece of
+    /// the input string). Every node has an array of 256 elements.
+    ///
+    /// There is also a help structure `active point` which has:
+    /// - length: length of suffix to insert.
+    /// - node: what node be the parent of the new child node.
+    /// - edge: index which the new child node meant to be inserted.
+    ///
+    ///
+    /// When a letter is processed (iterating over outer loop):
+    ///
+    /// - If current active node doesn't have a child at the index the active edge equals to then a
+    /// new node inserted in the array of children.
+    ///
+    /// - If a node is not inserted then it means then its place already is used by another node.
+    /// We need following the child node. If active length is equal or greater length of the active
+    /// node's child at the index (it means length of the suffix the node carries) then we change
+    /// current node by the child and reduce the active length by length of the active node.  Then
+    /// go to the begginning of the list.
+    ///
+    /// - If the following fails then check if the current suffix is a prefix of the suffix of the
+    /// current active node's child at the index the active edge equals to. NOTE that the suffix we
+    /// need to insert is a string view from current position until current position + active
+    /// length. Then we pick the NEXT letter.
+    ///
+    /// - If it's not a prefix then we split the child node which takes the place at the index the
+    /// active edge equals to and which is meant to be for the current suffix. In fact the old node
+    /// suffix shrinks from left by the active length. The new child node carries suffix from the
+    /// position the old node carried before the shrinking to its new start after the shrinking.
+    /// The new child node takes the place of the old node so the old node become a child of the
+    /// new child node (become grandchild of the current active node). There is also one more node
+    /// to insert which carries suffix from the position of the current letter is being processed
+    /// until the end of input string. The node is a child of the new child node and a leaf as
+    /// well. (Carries only one letter right after insertion.)
+    ///
+    ///
+    /// The next is executed only if a node was inserted or splitted:
+    ///
+    /// - The previous inserted node links to the new one.
+    ///
+    /// - If the active node is the root active length is positive then decrement it change the
+    /// active edge to the next unprocessed letter.
+    ///
+    /// - Otherwise change the active node to the node the inserted node has suffix link to or to
+    /// the root.
     fn new<T: AsRef<str> + ?Sized>(input: &'a T) -> Self {
         let mut active_point = ActivePoint::new(input.as_ref());
         let mut remainder = 0; // how many nodes should be inserted.
@@ -279,14 +326,15 @@ impl<'a> SuffixTree<'a> {
                     active_point.edge.unwrap()
                 };
 
-                let inserted_node_link: Link = if dbg!(!active_point.has_child(key)) {
+                let inserted_node_link: Link = if !active_point.has_child(key) {
                     active_point.add_node(key, i).into()
-                } else if dbg!(active_point.try_follow_edge()) {
+                } else if active_point.try_follow_edge() {
                     continue;
                 } else if active_point.is_prefix(key, *byte) {
                     active_point.update(&mut last_created_node);
                     continue 'outer;
                 } else {
+                    // debug_assert_eq!(active_point.length, 1);
                     active_point.split_node(key, *byte, i).into()
                 };
 
