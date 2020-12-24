@@ -180,7 +180,7 @@ impl<'a> ActivePoint<'a> {
     /// Moving means:
     /// - Reduce the active length by length of suffix of the proper child of the current node.
     /// - Change the active edge (which is actualy a symbol) to that one which the current suffix
-    /// ends before.
+    /// ends by.
     /// - Change the current active node to the child node.
     ///
     /// Render assets/utils/string/split_node.dot. It shows how moving works and reasong why it is
