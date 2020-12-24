@@ -1,0 +1,18 @@
+
+digraph {
+	rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
+    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
+
+    r1 -> r1a [label="ab"]
+    r1a -> r1aa [label="ab$"]
+    r1a -> r1a_ [label="$"]
+
+    r1 -> r1b [label="b"]
+    r1b -> r1ba [label="ab$"]
+    r1b -> r1b_ [label="$"]
+
+    r1 -> r1_ [label="$"]
+
+    r1a -> r1b [style="dashed" constraint=false]
+}

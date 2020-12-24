@@ -1,0 +1,11 @@
+digraph {
+    rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
+    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
+
+    r1 -> r1d [label="d"]
+    r1d -> r1dd [label="d"]
+    r1d -> r1d_ [label="$"]
+
+    r1 -> r1_ [label="$"]
+}

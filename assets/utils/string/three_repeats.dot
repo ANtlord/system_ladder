@@ -1,0 +1,86 @@
+digraph {
+	rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
+    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
+
+
+    subgraph cluster_0 {
+        label = "abc"
+        0
+
+        r0 -> r0a [label="abc"]
+        r0 -> r0b [label="bc"]
+        r0 -> r0c [label="c"]
+    }
+
+    subgraph cluster_1 {
+        label = "abcabx"
+        1
+
+        r1 -> r1a [label="ab"]
+        r1a -> r1ac [label="cabx"]
+        r1a -> r1ax [label="x"]
+
+        r1 -> r1b [label="b"]
+        r1b -> r1bc [label="cabx"]
+        r1b -> r1bx [label="x"]
+
+        r1 -> r1c [label="cabx"]
+        r1 -> r1x [label="x"]
+
+        r1a -> r1b [style="dashed" constraint=false]
+    }
+
+
+    subgraph cluster_2 {
+        label = "abcabxabc"
+        2
+
+        r2 -> r2a [label="ab"]
+        r2a -> r2ac [label="cabxabc"]
+        r2a -> r2ax [label="xabc"]
+
+        r2 -> r2b [label="b"]
+        r2b -> r2bc [label="cabxabc"]
+        r2b -> r2bx [label="xabc"]
+
+        r2 -> r2c [label="cabxabc"]
+        r2 -> r2x [label="xabc"]
+
+        r2a -> r2b [style="dashed" constraint=false]
+    }
+
+    subgraph cluster_3 {
+        label = "abcabxabcd"
+        3
+
+        r3 -> r3a [label="ab"]
+        r3a -> r3ac [label="c"]
+        r3a -> r3ax [label="xabcd"]
+
+        r3ac -> r3acd [label="d"]
+        r3ac -> r3aca [label="abxabcd"]
+
+        r3 -> r3b [label="b"]
+        r3b -> r3bc [label="c"]
+        r3b -> r3bx [label="xabcd"]
+
+        r3bc -> r3bcd [label="d"]
+        r3bc -> r3bca [label="abxabcd"]
+
+        r3 -> r3c [label="c"]
+        r3c -> r3cd [label="d"]
+        r3c -> r3ca [label="abxabcd"]
+
+        r3 -> r3x [label="xabcd"]
+        r3 -> r3d [label="d"]
+
+        r3a -> r3b [style="dashed" constraint=false penwidth="0.6"]
+        r3ac -> r3bc [style="dashed" constraint=false penwidth="0.6"]
+        r3bc -> r3c [style="dashed" constraint=false penwidth="0.6"]
+    }
+
+    0 -> 1 -> 2 -> 3 [style="invis"]
+    0, 1, 2, 3 [style="invis"]
+
+}
