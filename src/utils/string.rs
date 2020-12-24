@@ -183,8 +183,8 @@ impl<'a> ActivePoint<'a> {
     /// ends by.
     /// - Change the current active node to the child node.
     ///
-    /// Render assets/utils/string/split_node.dot. It shows how moving works and reasong why it is
-    /// needed.
+    /// Render assets/utils/string/split_node.dot. It shows how moving works and the reason why
+    /// it's needed.
     fn try_follow_edge(&mut self) -> bool {
         let key = self.edge.take().unwrap();
         let noderef: &Node = unsafe { self.node.as_ref() };
@@ -334,7 +334,6 @@ impl<'a> SuffixTree<'a> {
                     active_point.update(&mut last_created_node);
                     continue 'outer;
                 } else {
-                    // debug_assert_eq!(active_point.length, 1);
                     active_point.split_node(key, *byte, i).into()
                 };
 
@@ -344,7 +343,7 @@ impl<'a> SuffixTree<'a> {
                 }
 
                 remainder -= 1;
-                if dbg!(active_point.is_at_root() && active_point.length > 0) { // r1
+                if active_point.is_at_root() && active_point.length > 0 { // r1
                     active_point.length -= 1;
                     let next_byte_position_to_insert = i - remainder + 1;
                     active_point.edge = Some(if input.as_ref().len() == next_byte_position_to_insert {
