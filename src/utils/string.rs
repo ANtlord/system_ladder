@@ -916,135 +916,127 @@ mod tests {
         );
     }
 
-    mod inner_extension {
-        use super::*;
+    #[test]
+    /// Tests adding a node from a splitted one.
+    ///
+    /// The `a` node of the root is splitted when `d` is processed. Then processing `a` the
+    /// algorithm follows `a` node of the root (reducing active length). Then processing `k` it
+    /// extends the `a` node.
+    ///
+    /// assets/utils/string/inner_node_extend.dot
+    fn inner_node_extend() {
+        let data = "abcadak";
+        let tree = SuffixTree::new(data);
+        let expected_endptr = Rc::new(RefCell::new(data.len()));
 
-        #[test]
-        /// Tests adding a node from a splitted one.
-        ///
-        /// The `a` node of the root is splitted when `d` is processed. Then processing `a` the
-        /// algorithm follows `a` node of the root (reducing active length). Then processing `k` it
-        /// extends the `a` node.
-        ///
-        /// assets/utils/string/inner_extension/without_suffix.dot
-        fn without_suffix() {
-            let data = "abcadak";
-            let tree = SuffixTree::new(data);
-            let expected_endptr = Rc::new(RefCell::new(data.len()));
-
-            let mut expected_tree = SuffixTree{
-                root: Node {
-                    data,
-                    from: 0,
-                    to: ROOT_TO,
-                    nodes: NodesBuild::new()
-                        .add(END as char, end_node(data, expected_endptr.clone()))
-                        .add('a', Node{
-                            data,
-                            from: 0,
-                            to: 1,
-                            suffix_link: Link::default(),
-                            nodes: NodesBuild::new()
-                                .add('k', Node{
-                                    data,
-                                    from: 6,
-                                    to: data.len(),
-                                    nodes: make_children(),
-                                    suffix_link: Link::default(),
-                                })
-                                .add('d', Node{
-                                    data,
-                                    from: 4,
-                                    to: data.len(),
-                                    nodes: make_children(),
-                                    suffix_link: Link::default(),
-                                })
-                                .add('b', Node{
-                                    data,
-                                    from: 1,
-                                    to: data.len(),
-                                    nodes: make_children(),
-                                    suffix_link: Link::default(),
-                                })
-                                .run(),
-                        })
-                        .add('b', Node{
-                            data,
-                            from: 1,
-                            to: data.len(),
-                            suffix_link: Link::default(),
-                            nodes: make_children(),
-                        })
-                        .add('c', Node{
-                            data,
-                            from: 2,
-                            to: data.len(),
-                            suffix_link: Link::default(),
-                            nodes: make_children(),
-                        })
-                        .add('d', Node{
-                            data,
-                            from: 4,
-                            to: data.len(),
-                            suffix_link: Link::default(),
-                            nodes: make_children(),
-                        })
-                        .add('k', Node{
-                            data,
-                            from: 6,
-                            to: data.len(),
-                            suffix_link: Link::default(),
-                            nodes: make_children(),
-                        })
-                        .run(),
-                    suffix_link: Link::default(),
-                },
-            };
-
-            test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
-        }
-
-        #[test]
-        fn with_suffix() {
-        }
-
-        #[test]
-        /// This test case seems redudant as it's covers the same as `undefined_repeat` test case.
-        ///
-        /// assets/utils/string/pair_of_letters.dot
-        fn pair_of_letters() {
-            let data = "dd";
-            let tree = SuffixTree::new(data);
-            let expected_endptr = Rc::new(RefCell::new(data.len()));
-
-            let mut expected_tree = SuffixTree{
-                root: Node {
-                    data,
-                    from: 0,
-                    to: ROOT_TO,
-                    nodes: NodesBuild::new()
-                        .add(END as char, end_node(data, expected_endptr.clone()))
-                        .add('d', Node{
-                            data,
-                            from: 0,
-                            to: 1,
-                            suffix_link: Link::default(),
-                            nodes: NodesBuild::new()
-                                .add(END as char, end_node(data, expected_endptr.clone()))
-                                .add('d', Node {
-                                    data,
-                                    from: 1,
-                                    to: data.len(),
-                                    suffix_link: Link::default(),
-                                    nodes: make_children(),
-                                }).run(),
-                        }).run(),
+        let mut expected_tree = SuffixTree{
+            root: Node {
+                data,
+                from: 0,
+                to: ROOT_TO,
+                nodes: NodesBuild::new()
+                    .add(END as char, end_node(data, expected_endptr.clone()))
+                    .add('a', Node{
+                        data,
+                        from: 0,
+                        to: 1,
                         suffix_link: Link::default(),
-                },
-            };
+                        nodes: NodesBuild::new()
+                            .add('k', Node{
+                                data,
+                                from: 6,
+                                to: data.len(),
+                                nodes: make_children(),
+                                suffix_link: Link::default(),
+                            })
+                            .add('d', Node{
+                                data,
+                                from: 4,
+                                to: data.len(),
+                                nodes: make_children(),
+                                suffix_link: Link::default(),
+                            })
+                            .add('b', Node{
+                                data,
+                                from: 1,
+                                to: data.len(),
+                                nodes: make_children(),
+                                suffix_link: Link::default(),
+                            })
+                            .run(),
+                    })
+                    .add('b', Node{
+                        data,
+                        from: 1,
+                        to: data.len(),
+                        suffix_link: Link::default(),
+                        nodes: make_children(),
+                    })
+                    .add('c', Node{
+                        data,
+                        from: 2,
+                        to: data.len(),
+                        suffix_link: Link::default(),
+                        nodes: make_children(),
+                    })
+                    .add('d', Node{
+                        data,
+                        from: 4,
+                        to: data.len(),
+                        suffix_link: Link::default(),
+                        nodes: make_children(),
+                    })
+                    .add('k', Node{
+                        data,
+                        from: 6,
+                        to: data.len(),
+                        suffix_link: Link::default(),
+                        nodes: make_children(),
+                    })
+                    .run(),
+                suffix_link: Link::default(),
+            },
+        };
 
-            test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
-        }
+        test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
+    }
+
+    #[test]
+    /// This test case seems redudant as it's covers the same as `undefined_repeat` test case.
+    ///
+    /// assets/utils/string/pair_of_letters.dot
+    fn pair_of_letters() {
+        let data = "dd";
+        let tree = SuffixTree::new(data);
+        let expected_endptr = Rc::new(RefCell::new(data.len()));
+
+        let mut expected_tree = SuffixTree{
+            root: Node {
+                data,
+                from: 0,
+                to: ROOT_TO,
+                nodes: NodesBuild::new()
+                    .add(END as char, end_node(data, expected_endptr.clone()))
+                    .add('d', Node{
+                        data,
+                        from: 0,
+                        to: 1,
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new()
+                            .add(END as char, end_node(data, expected_endptr.clone()))
+                            .add('d', Node {
+                                data,
+                                from: 1,
+                                to: data.len(),
+                                suffix_link: Link::default(),
+                                nodes: make_children(),
+                            }).run(),
+                    }).run(),
+                    suffix_link: Link::default(),
+            },
+        };
+
+        test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
     }
 
     #[test]
@@ -1178,7 +1170,10 @@ mod tests {
     }
 
     #[test]
-    /// Doesn't test extension of inner node.
+    /// Test splitting inner node (if a node is inner then it's splitted already)
+    ///
+    /// Render assets/utils/string/inner_node_split.dot to see details. The last step isn't drawn.
+    /// It has only a new edge from root at key `$`.
     fn inner_node_split() {
         let data = "banana";
         let tree = SuffixTree::new(data);

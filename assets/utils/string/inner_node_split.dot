@@ -1,0 +1,75 @@
+digraph {
+	rankdir="LR";  // horizontal layout
+    node [label="" size="0.001" shape="circle" height="0.07" fillcolor="black" style="filled"]
+    edge [fontsize="11" arrowsize="0.4" len="1.0" penwidth="0.8"]
+    fontname="monospace"
+
+    subgraph cluster_0 {
+        label = "ban"
+        0
+
+        r0 -> r0b [label="ban"]
+        r0 -> r0a [label="an"]
+        r0 -> r0n [label="n"]
+    }
+
+    subgraph cluster_1 {
+        label = "banana (r=3, l=3)"
+        1
+
+        r1 -> r1b [label="banana"]
+        r1 -> r1a [label="anana"]
+        r1 -> r1n [label="nana"]
+    }
+
+    subgraph cluster_2 {
+        label = "banana$ (r=4, l=3, ana$)"
+        2
+
+        r2 -> r2b [label="banana$"]
+        r2 -> r2a [label="ana"]
+        r2a -> r2ab [label="nana$"]
+
+        r2 -> r2n [label="nana$"]
+    }
+
+    subgraph cluster_3 {
+        label = "banana$ (r=3, l=2, na$)"
+        3
+
+        r3 -> r3b [label="banana$"]
+        r3 -> r3a [label="ana"]
+        r3a -> r3an [label="na$"]
+        r3a -> r3a_ [label="$"]
+
+        r3 -> r3n [label="na"]
+        r3n -> r3nn [label="na$"]
+        r3n -> r3n_ [label="$"]
+
+        r3a -> r3n [style="dashed" constraint=false]
+    }
+
+    subgraph cluster_4 {
+        label = "banana$ (r=2, l=1, a$)"
+        4
+
+        r4 -> r4b [label="banana$"]
+        r4 -> r4a [label="a"]
+        r4a -> r4an [label="na"]
+        r4a -> r4a_ [label="$"]
+
+        r4an -> r4ann [label="na$"]
+        r4an -> r4an_ [label="$"]
+
+        r4 -> r4n [label="na"]
+        r4n -> r4nn [label="na$"]
+        r4n -> r4n_ [label="$"]
+
+        r4a [fillcolor="orange"]
+        r4an -> r4n [style="dashed" constraint=false]
+        r4n -> r4a [style="dashed" constraint=false]
+    }
+
+    0 -> 1 -> 2 -> 3 -> 4 [style="invis"]
+    0, 1, 2, 3, 4 [style="invis"]
+}
