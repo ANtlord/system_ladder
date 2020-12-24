@@ -20,7 +20,7 @@ const ROOT_TO: usize = 0;
 
 static mut TR: Option<Trace> = None;
 
-/// print which passes through cache. It's very handy you corrupt memory.
+/// print which passes through cache. It's very handy if a program finishes suddenly.
 fn diprint(val: impl AsRef<str>) {
     let out = io::stdout();
     let mut l = out.lock();
@@ -1010,6 +1010,8 @@ mod tests {
 
         #[test]
         /// This test case seems redudant as it's covers the same as `undefined_repeat` test case.
+        ///
+        /// assets/utils/string/pair_of_letters.dot
         fn pair_of_letters() {
             let data = "dd";
             let tree = SuffixTree::new(data);
@@ -1121,8 +1123,8 @@ mod tests {
     }
 
     #[test]
-    /// The test for a case when a splitted node links to a splitted node which was on the previous
-    /// iteration of 'outer loop.
+    /// The test for a case when a splitted node has a suffix link to a splitted node which was
+    /// created on the previous iteration of 'outer loop.
     ///
     /// This happens when `any` suffix is being inserted. It splits the `a` node of the root after
     /// `n` letter so the new branch carries only `y`.
@@ -1132,9 +1134,10 @@ mod tests {
     ///       |
     ///       |
     /// root -|
+    ///
     /// As the node is splitted then we store it into last_created_node, decrement remainder as well
     /// active_point.length. Then we need to insert `ny`. As it was inserted when `ny` suffix was
-    /// processed then the `n` node has `x` and `y` nodes. It looks so:
+    /// being processed then the `n` node has `x` and `y` nodes. It looks so:
     ///         * (xnyany)
     ///   (an) /
     ///       *-* (y)
@@ -1144,7 +1147,7 @@ mod tests {
     /// root -----*-*(yany)
     ///
     /// So it means that we can't insert `ny` suffix because it's already there the only thing to
-    /// do is follow the `n` node of the root, decrement active_point.length. Now staying in the
+    /// do is following the `n` node of the root, decrement active_point.length. Now staying in the
     /// `n` node we have to insert only `y` but it's there too so we just increment active_point
     /// but also we link the `an` node of the root to the `n` node of the root. (orange line in the
     /// graphviz graph)
@@ -1153,9 +1156,9 @@ mod tests {
     /// iteration of 'outer loop which starts right after the incrementing of the
     /// active_point.lengh.
     ///
-    /// If don't create the link on this step then we will lose `nz` suffix` after inserting `anz`
-    /// because the `an` will not have the suffix link. This particular input simply crashes if
-    /// don't do this thing.
+    /// If don't create the link on this step then we will lose `nz` (root -> n -> z) suffix while
+    /// inserting `anz` because the `an` will not have the suffix link. This particular input
+    /// simply crashes if don't do this thing.
     ///
     /// assets/utils/string/post_suffix_linking.dot
     fn post_suffix_linking() {
@@ -1168,8 +1171,8 @@ mod tests {
     /// splitting an inner node which the last created node is child of.
     ///
     /// assets/utils/string/suffix_link_from_recreated_node.dot
-    /// The red node on the second step changes its parent but it must keep its place in RAM to
-    /// keep last_created_node valid.
+    /// The red node changes its parent on the second step but it must keep the same place in RAM
+    /// to keep last_created_node valid.
     fn suffix_link_from_recreated_node() {
         let tree = SuffixTree::new("GAAA");
     }

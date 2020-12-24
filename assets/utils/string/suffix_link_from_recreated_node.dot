@@ -1,5 +1,5 @@
 digraph {
-	rankdir="LR";  // horizontal layout
+    rankdir="LR";  // horizontal layout
     node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
     edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
 
@@ -47,6 +47,6 @@ digraph {
         r2 -> r2_ [label="$"]
     }
 
-    0, 1,2 [style="invis"]
+    0, 1, 2 [style="invis"]
     0 -> 1 -> 2  [style="invis"]
 }

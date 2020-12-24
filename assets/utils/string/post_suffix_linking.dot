@@ -1,28 +1,79 @@
 digraph {
-	rankdir="LR";  // horizontal layout
+    rankdir="LR";  // horizontal layout
     node [label="" size="0.001" shape="circle" height="0.05" fillcolor="black" style="filled"]
-    edge [fontsize="9" arrowsize="0.4" len="1.0" penwidth="0.8"]
+    edge [fontsize="11" fontname="monospace" arrowsize="0.4" len="1.0" penwidth="0.8"]
 
-    r -> ra [label="an"]
-    ra -> rax [label="xnyanyanz"]
-    ra -> ray [label="yanz"]
-    ra -> raz [label="z"]
+    subgraph cluster_0 {
+        label = "anx"
+        0
 
-    r -> rn [label="n"]
-    rn -> rnx [label="xnyanyanz"]
-    rn -> rnz [label="z", color="orange"] // can be missed
-    rn -> rny [label="yan"]
-    rny -> rnyz [label="z"]
-    rny -> rnyy [label="yanz"]
+        r0 -> r0a [label="anx"]
+        r0 -> r0n [label="nx"]
+        r0 -> r0x [label="x"]
+    }
 
-    r -> rx [label="xnyanyanz"]
+    subgraph cluster_1 {
+        label = "anxny"
+        1
 
-    r -> ry [label="yan"]
-    ry -> ryz [label="z"]
-    ry -> ryy [label="yanz"]
+        r1 -> r1a [label="anxny"]
+        r1 -> r1n [label="n"]
+        r1n -> r1nx [label="xny"]
+        r1n -> r1ny [label="y"]
+        r1 -> r1x [label="xny"]
+        r1 -> r1y [label="y"]
 
-    r -> rz [label="z"]
+        r1n [fillcolor="orange"]
+    }
 
-    rny -> ry [style="dashed" constraint=false]
-    ra -> rn [style="dashed" constraint=false, color="orange"]
+    subgraph cluster_2 {
+        label = "anxnyany"
+        2
+
+        r2 -> r2a [label="an"]
+        r2a -> r2ax [label="xnyany"]
+        r2a -> r2ay [label="y"]
+
+        r2 -> r2n [label="n"]
+        r2n -> r2nx [label="xnyany"]
+        r2n -> r2ny [label=<<b>y</b>any>]
+
+        r2 -> r2x [label="xnyany"]
+        r2 -> r2y [label="yany"]
+
+        r2n [fillcolor="orange"]
+        r2a -> r2n [style="dashed" constraint=false, color="orange"]
+    }
+
+    subgraph cluster_3 {
+        label = "anxnyanyanz"
+        3
+
+        r3 -> r3a [label="an"]
+        r3a -> r3ax [label="xnyanyanz"]
+        r3a -> r3ay [label="yanz"]
+        r3a -> r3az [label="z"]
+
+        r3 -> r3n [label="n"]
+        r3n -> r3nx [label="xnyanyanz"]
+        r3n -> r3nz [label="z", color="orange"] // can be missed
+        r3n -> r3ny [label="yan"]
+        r3ny -> r3nyz [label="z"]
+        r3ny -> r3nyy [label="yanz"]
+
+        r3 -> r3x [label="xnyanyanz"]
+
+        r3 -> r3y [label="yan"]
+        r3y -> r3yz [label="z"]
+        r3y -> r3yy [label="yanz"]
+
+        r3 -> r3z [label="z"]
+
+        r3n [fillcolor="orange"]
+        r3ny -> r3y [style="dashed" constraint=false]
+        r3a -> r3n [style="dashed" constraint=false, color="orange"]
+    }
+
+    0 -> 1 -> 2 -> 3 [style="invis"]
+    0, 1, 2, 3 [style="invis"]
 }
