@@ -183,7 +183,7 @@ impl<'a> ActivePoint<'a> {
     /// ends by.
     /// - Change the current active node to the child node.
     ///
-    /// Render assets/utils/string/split_node.dot. It shows how moving works and the reason why
+    /// Render assets/str/suffixtree/split_node.dot. It shows how moving works and the reason why
     /// it's needed.
     fn try_follow_edge(&mut self) -> bool {
         let key = self.edge.take().unwrap();
@@ -221,7 +221,7 @@ impl<'a> ActivePoint<'a> {
     /// node. The suffix can the rest of the word.
     /// The second one carries suffix from the current handled letter to the end of the word.
     ///
-    /// Render assets/utils/string/split_node.dot to get the picture. Gray nodes don't make
+    /// Render assets/str/suffixtree/split_node.dot to get the picture. Gray nodes don't make
     /// any sense they are just for consistence. Black nodes are affected nodes.
     fn split_node(&mut self, at: u8, for_letter: u8, current_end: usize) -> &Node<'a> {
         let at = at as usize;
@@ -674,7 +674,7 @@ mod tests {
     #[test]
     /// Tests splitting a leaf node and linking between splitted nodes.
     ///
-    /// assets/utils/string/two_repeats.dot
+    /// assets/str/suffixtree/two_repeats.dot
     fn two_repeats() {
         let data = "abcabx";
         let tree = SuffixTree::new(data);
@@ -769,7 +769,7 @@ mod tests {
     /// Tests splitting a leaf node, linking between splitted nodes and following edge.
     /// See previous state of the tree in `two_repeats` docs.
     ///
-    /// assets/utils/string/three_repeats.dot
+    /// assets/str/suffixtree/three_repeats.dot
     fn three_repeats() {
         let data = "abcabxabcd";
         let tree = SuffixTree::new(data);
@@ -922,7 +922,7 @@ mod tests {
     /// algorithm follows `a` node of the root (reducing active length). Then processing `k` it
     /// extends the `a` node.
     ///
-    /// assets/utils/string/inner_node_extend.dot
+    /// assets/str/suffixtree/inner_node_extend.dot
     fn inner_node_extend() {
         let data = "abcadak";
         let tree = SuffixTree::new(data);
@@ -1003,7 +1003,7 @@ mod tests {
     #[test]
     /// This test case seems redudant as it's covers the same as `undefined_repeat` test case.
     ///
-    /// assets/utils/string/pair_of_letters.dot
+    /// assets/str/suffixtree/pair_of_letters.dot
     fn pair_of_letters() {
         let data = "dd";
         let tree = SuffixTree::new(data);
@@ -1041,7 +1041,7 @@ mod tests {
     #[test]
     /// tests insertion of last unprocessed repeat.
     ///
-    /// assets/utils/string/undefined_repeat.dot
+    /// assets/str/suffixtree/undefined_repeat.dot
     fn undefined_repeat() {
         let data = "abab";
         let tree = SuffixTree::new(data);
@@ -1151,7 +1151,7 @@ mod tests {
     /// inserting `anz` because the `an` will not have the suffix link. This particular input
     /// simply crashes if don't do this thing.
     ///
-    /// assets/utils/string/post_suffix_linking.dot
+    /// assets/str/suffixtree/post_suffix_linking.dot
     fn post_suffix_linking() {
         let tree = SuffixTree::new("anxnyanyanz");
     }
@@ -1161,7 +1161,7 @@ mod tests {
     /// This test case ensures that pointer to the last created node is still relevant after
     /// splitting an inner node which the last created node is child of.
     ///
-    /// assets/utils/string/suffix_link_from_recreated_node.dot
+    /// assets/str/suffixtree/suffix_link_from_recreated_node.dot
     /// The red node changes its parent on the second step but it must keep the same place in RAM
     /// to keep last_created_node valid.
     fn suffix_link_from_recreated_node() {
@@ -1171,7 +1171,7 @@ mod tests {
     #[test]
     /// Test splitting inner node (if a node is inner then it's splitted already)
     ///
-    /// Render assets/utils/string/inner_node_split.dot to see details. The last step isn't drawn.
+    /// Render assets/str/suffixtree/inner_node_split.dot to see details. The last step isn't drawn.
     /// It has only a new edge from root at key `$`.
     fn inner_node_split() {
         let data = "banana";

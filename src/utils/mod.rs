@@ -1,5 +1,4 @@
 pub mod vector;
-pub mod string;
 mod quicksort;
 mod insertionsort;
 mod mergesort;
