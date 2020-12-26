@@ -1,1 +1,2 @@
-pub mod suffixtree;
+mod suffixtree;
+mod kmp;
