@@ -1,3 +1,4 @@
+/// Substring search in linear time with Knuth-Morris-Prath algorithm.
 use std::borrow::Borrow;
 use std::ops::Index;
 
@@ -35,7 +36,16 @@ impl<Byte: Borrow<u8>> Index<Byte> for Radix {
 
 type TransitionMap = Vec<usize>;
 
-// DFA
+// DFA for Knuth-Morris-Prath algorithm.
+//
+// FIXME: support Unicode. Idea: use a RB-tree, B-Tree or a hashmap for that.
+// https://github.com/BurntSushi/suffix - repo implements suffix tree for unicode
+// https://www.aclweb.org/anthology/C96-2200.pdf Knuth-Morris-Prath algorithm for unicode on
+// chineese.
+// http://yuex.in/post/2017/06/kmp-beauty.html Knuth-Morris-Prath supports unicode replacing DFA by
+// NFA.
+// http://monge.univ-mlv.fr/~mac/Articles-PDF/CP-1991-jacm.pdf - article describes two-way search
+// which is combination of Knuth-Morris-Prath and Boyer-Moore algorithm and used in the STD.
 struct StateMachine {
     states: Vec<TransitionMap>,
     radix: Radix,
