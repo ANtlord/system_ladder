@@ -12,17 +12,8 @@
 //
 //That is, P[i] = max > i ? min(P[i'], max-i) : 0.
 
-static DELIMETER: char = 0x01 as char;
-
-static LOREM_IPSUM: &str = r#"
-Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the
-industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type
-and scrambled it to make a type specimen book. It has survived not only five centuries, but also
-the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the
-1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with
-desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.
-"#;
-
+use crate::tprintln;
+static DELIMETER: char = '$';
 
 #[inline]
 /// Symmetric property
@@ -32,45 +23,67 @@ fn mirror(of: usize, around: usize) -> usize {
 
 struct PalindromeSearch { }
 
+fn palindrome_sizes(chars: &[char]) -> Vec<usize> {
+    let mut string_proccessed_to = 0;
+    let mut current_palindrom_center = 0;
+    let mut sizes = vec![0; chars.len()];
+    for i in 0 .. sizes.len() {
+        // Notation:
+        // Main palindrome - palindrome which center defined by `current_palindrom_center`.
+        // Right palindrome - palindrome considered at the current iteration. It's to the right
+        // of `current_palindrom_center`.
+        // Left palindrome - palindrome which center as far as center of Right palindrome but it's
+        // to the left side.
+        //
+        // Size of Right palindrome equals to size of the Left palindrome if the distance from the
+        // center of the ith palindrome (sizes[i]) to the right boundary is less than size of the
+        // Left palindrome.
+        //
+        // We aren't sure what's after the right boundary but we know what's before. At this
+        // point we know what's before because we move the right boundary to the last letter on
+        // right side equals to its mirror (letter on the left side at the same distance from
+        // the center of Right palindrome).
+        sizes[i] = if i < string_proccessed_to {
+            sizes[mirror(i, current_palindrom_center)].min(string_proccessed_to - i)
+        } else {
+            0
+        };
+
+        // size of Right palindrome from increments as letters on left side equal letters on
+        // right side.
+        while i + sizes[i] + 1 < chars.len() && i >= sizes[i] + 1
+            && chars[i - sizes[i] - 1] == chars[i + sizes[i] + 1]
+        {
+            sizes[i] += 1;
+        }
+
+        // We shift right boundary by size of the Right palindrome because checked all letters
+        // behind the boundary. The condition checks whether they were behind.
+        if i + sizes[i] > string_proccessed_to {
+            current_palindrom_center = i;
+            string_proccessed_to = i + sizes[i];
+        }
+    }
+
+    sizes
+}
+
 impl PalindromeSearch {
     fn new<T: AsRef<str>>(input: &T) -> String {
         let input: Vec<_> = input.as_ref().chars().collect();
         let mut chars = Vec::with_capacity(2 * input.len() + 1);
         chars.push(DELIMETER);
-        input.iter().for_each(|c| {
-            chars.push(*c);
+        input.into_iter().for_each(|c| {
+            chars.push(c);
             chars.push(DELIMETER);
         });
 
-        let mut max = 0;
-        let mut current_palindrom_center = 0;
-        let mut palindrome_lengths = vec![0; chars.len()];
-        for i in 0 .. palindrome_lengths.len() {
-            palindrome_lengths[i] = if max > i {
-                palindrome_lengths[mirror(i, current_palindrom_center)].min(max - i)
-            } else {
-                0
-            };
-
-            while i + palindrome_lengths[i] + 1 < chars.len()
-                && i > palindrome_lengths[i] + 1
-                && chars[i - palindrome_lengths[i] - 1] == chars[i + palindrome_lengths[i] + 1] {
-                palindrome_lengths[i] += 1;
-            }
-
-            if i + palindrome_lengths[i] > max {
-                current_palindrom_center = i;
-                max = i + palindrome_lengths[i];
-            } else {
-                dbg!(max, i, palindrome_lengths[i]);
-            }
-        }
-
+        let palindrome_lengths = palindrome_sizes(&chars);
         let (pos, longest_palindrome_center) = palindrome_lengths.iter().enumerate()
-            .fold((0, 0), |(i, a), (j, b)| if a < *b {
+            .fold((0, 0), |(i, max), (j, b)| if max < *b {
                 (j, *b)
             } else {
-                (i, a)
+                (i, max)
             });
 
         chars[pos - longest_palindrome_center .. pos + longest_palindrome_center + 1]
@@ -82,23 +95,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn abba() {
+    fn whole_word_is_palindrome() {
         assert_eq!(PalindromeSearch::new(&"abba"), "abba");
-        assert!(false);
-    }
-
-    #[test]
-    fn racecar() {
         assert_eq!(PalindromeSearch::new(&"racecar"), "racecar");
     }
 
     #[test]
-    fn cabal() {
+    fn oneletter() {
+        let d = DELIMETER;
+        assert_eq!(palindrome_sizes(&[d, 'N', d]), vec![0, 1, 0]);
+    }
+
+    #[test]
+    fn right_part_is_palindrome() {
+        let d = DELIMETER;
+        // aaabnbnb
+        let input = [d, 'a', d, 'a', d, 'a', d, 'b', d, 'n', d, 'b', d, 'n', d, 'b', d];
+        assert_eq!(palindrome_sizes(&input), vec![0, 1, 2, 3, 2, 1, 0, 1, 0, 3, 0, 5, 0, 3, 0, 1, 0]);
+    }
+
+    #[test]
+    fn middle_part_is_palindrome() {
         assert_eq!(PalindromeSearch::new(&"cabal"), "aba");
     }
 
     #[test]
+
+    #[test]
     fn lorem_ipsum() {
-        assert_eq!(PalindromeSearch::new(&LOREM_IPSUM), "is si");
+        let lorem_ipsum = include_str!("lorem_ipsum.txt");
+        assert_eq!(PalindromeSearch::new(&lorem_ipsum), "is si");
     }
 }
