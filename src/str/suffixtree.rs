@@ -71,7 +71,7 @@ impl From<Node> for Child {
 }
 
 struct Node {
-    view: Vec<Option<(usize, usize)>>,
+    views: Vec<Option<(usize, usize)>>,
     nodes: [Child; 256],
     suffix_link: Link,
     markmask: u8, // 00 - root, 01 - appears in the first word only
@@ -80,7 +80,7 @@ struct Node {
 impl Node {
     fn new(from: usize, to: usize) -> Self {
         Self {
-            view: vec![Some((from, to))],
+            views: vec![Some((from, to))],
             nodes: make_children(),
             suffix_link: Link::default(),
             markmask: 1,
@@ -96,11 +96,11 @@ impl Node {
     }
 
     fn from(&self, at: usize) -> usize {
-        self.view[at].unwrap().0
+        self.views[at].unwrap().0
     }
 
     fn to(&self, at: usize) -> usize {
-        self.view[at].unwrap().1
+        self.views[at].unwrap().1
     }
 }
 
@@ -238,7 +238,7 @@ impl<'a> ActivePoint<'a> {
         let from = node.from(self.word_count - 1);
         let divide_suffix_at = from + self.length;
         let mut new_node = Node::new(from, divide_suffix_at);
-        node.view[self.word_count - 1] = Some((divide_suffix_at, node.to(self.word_count - 1)));
+        node.views[self.word_count - 1] = Some((divide_suffix_at, node.to(self.word_count - 1)));
         new_node.nodes[self.data.as_bytes()[divide_suffix_at] as usize] = Child(Some(node));
         new_node.nodes[for_letter as usize] = Node::new(current_end, self.data.len()).into();
         new_node
@@ -320,13 +320,12 @@ impl<'a> SuffixTree<'a> {
             remainder += 1;
             while remainder > 0 {
                 debug_assert!(active_point.length <= remainder);
-                let key = if active_point.length == 0 {
-                    active_point.edge = Some(*byte);
-                    *byte
-                } else {
-                    active_point.edge.unwrap()
+                let key = match active_point.length {
+                    0 => *byte,
+                    _ => active_point.edge.unwrap(),
                 };
 
+                active_point.edge = Some(key);
                 let inserted_node_link: Link = if !active_point.has_child(key) {
                     active_point.add_node(key, i).into()
                 } else if active_point.try_follow_edge() {
@@ -375,19 +374,24 @@ impl<'a> SuffixTree<'a> {
         Self{root, end, word_count: 0, data: vec!()}.extend(input.as_ref())
     }
 
-    fn find<Byte: Borrow<u8>>(&self, mut pattern_iter: impl Iterator<Item=Byte>) -> Option<usize> {
+    // TODO: implement searching in several words
+    fn find<Byte, I>(&self, mut pattern_iter: I) -> Option<usize>
+        where
+            Byte: Borrow<u8>,
+            I: Iterator<Item=Byte>,
+    {
         let mut node = self.root.nodes.get(*pattern_iter.next()?.borrow() as usize)?.0.as_ref()?;
         let mut node_byte_count = 1;
         let mut pattern_len = 1;
         for byte in pattern_iter {
-            let mut text_index = node.from(0) + node_byte_count;
-            if text_index >= node.to(0) {
+            let mut text_index = node.from(0) + node_byte_count; // bug
+            if text_index >= node.to(0) { // bug
                 node = node.nodes.get(*byte.borrow() as usize)?.0.as_ref()?;
                 node_byte_count = 0;
-                text_index = node.from(0);
+                text_index = node.from(0); // bug
             }
 
-            if self.data[0].as_bytes()[text_index] != *byte.borrow() {
+            if self.data[0].as_bytes()[text_index] != *byte.borrow() { // bug
                 return None;
             }
 
@@ -395,33 +399,38 @@ impl<'a> SuffixTree<'a> {
             pattern_len += 1;
         }
 
-        Some(node.from(0) + node_byte_count - pattern_len)
+        Some(node.from(0) + node_byte_count - pattern_len) // bug
     }
 
     fn is_leaf(&self, node: &Node) -> bool {
         self.data[0].len() == node.to(0)
     }
 
-    fn longest_repeat(&self) -> &'a str {
+    fn longest_repeat(&self, at: usize) -> &'a str {
+        if at >= self.word_count {
+            return "";
+        }
+
         let mut stack = Stack::new();
         stack.push((&self.root, 0));
         let (mut ret_from, mut repeat_len) = (0, 0);
         while let Some((node, len)) = stack.pop() {
             if self.is_leaf(node) {
-                let total_len = len - node.len(0);
+                let total_len = len - node.len(at);
                 if total_len > repeat_len {
                     repeat_len = total_len;
-                    ret_from = node.from(0) - repeat_len;
+                    ret_from = node.from(at) - repeat_len;
                 }
 
                 continue;
             }
 
-            let children = node.nodes.iter().filter_map(|x| x.0.as_ref());
+            let children = node.nodes.iter().filter_map(|x| x.0.as_ref())
+                .filter(|x| x.views[at].is_some());
             children.for_each(|x| stack.push((x, len + x.len(0))));
         }
 
-        &self.data[0][ret_from .. ret_from + repeat_len]
+        &self.data[at][ret_from .. ret_from + repeat_len]
     }
 
     fn longest_common_substring(&self) -> &'a str {
@@ -452,7 +461,7 @@ impl<'a> SuffixTree<'a> {
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Node")
-            .field("view", &self.view)
+            .field("view", &self.views)
             .field("suffix_link", &self.suffix_link)
             .field("markmask", &format!("{:b}", self.markmask))
             .finish()
@@ -468,7 +477,7 @@ mod tests {
     fn clone_leaf(from: &Child) -> Child {
         Child(from.0.as_ref().map(|from| {
             Box::new(Node {
-                view: from.view.clone(),
+                views: from.views.clone(),
                 nodes: make_children(),
                 suffix_link: Link::default(),
                 markmask: from.markmask,
@@ -510,7 +519,7 @@ mod tests {
 
     impl PartialEq for Node {
         fn eq(&self, other: &Self) -> bool {
-            let res = self.view == other.view;
+            let res = self.views == other.views;
             res && self.suffix_link == other.suffix_link
         }
     }
@@ -524,7 +533,7 @@ mod tests {
     fn end_node(data: &str, expected_endptr: Rc<RefCell<usize>>) -> Node {
         Node {
             markmask: DEFAULT_MARKS,
-            view: vec![Some((data.len(), data.len()))],
+            views: vec![Some((data.len(), data.len()))],
             suffix_link: Link::default(),
             nodes: NodesBuild::new().run(),
         }
@@ -581,24 +590,24 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((0, ROOT_TO))],
+                views: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((0, data.len()))],
+                        views: vec![Some((0, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((1, data.len()))],
+                        views: vec![Some((1, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((2, data.len()))],
+                        views: vec![Some((2, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
@@ -716,13 +725,13 @@ mod tests {
         let anode_nodes = NodesBuild::new()
             .add('c', Node{
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((2, data.len()))],
+                views: vec![Some((2, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
             .add('x', Node{
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((5, data.len()))],
+                views: vec![Some((5, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -737,30 +746,30 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((0, ROOT_TO))],
+                views: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((0, 2))],
+                        views: vec![Some((0, 2))],
                         suffix_link: Link::default(),
                         nodes: anode_nodes,
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((1, 2))],
+                        views: vec![Some((1, 2))],
                         suffix_link: Link::default(),
                         nodes: bnode_nodes,
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((2, data.len()))],
+                        views: vec![Some((2, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('x', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((5, data.len()))],
+                        views: vec![Some((5, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
@@ -807,13 +816,13 @@ mod tests {
         let cnode_nodes = NodesBuild::new()
             .add('a', Node{
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((3, data.len()))],
+                views: vec![Some((3, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
             .add('d', Node{
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((9, data.len()))],
+                views: vec![Some((9, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -828,13 +837,13 @@ mod tests {
         let bnode_nodes = NodesBuild::new()
             .add('c', Node{
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((2, 3))],
+                views: vec![Some((2, 3))],
                 suffix_link: Link::default(),
                 nodes: b_cnode_nodes,
             })
             .add('x', Node{
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((5, data.len()))],
+                views: vec![Some((5, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -843,13 +852,13 @@ mod tests {
         let anode_nodes = NodesBuild::new()
             .add('c', Node{
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((2, 3))],
+                views: vec![Some((2, 3))],
                 suffix_link: Link::default(),
                 nodes: ab_cnode_nodes,
             })
             .add('x', Node{
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((5, data.len()))],
+                views: vec![Some((5, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -861,36 +870,36 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((0, ROOT_TO))],
+                views: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((0, 2))],
+                        views: vec![Some((0, 2))],
                         suffix_link: Link::default(),
                         nodes: anode_nodes,
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((1, 2))],
+                        views: vec![Some((1, 2))],
                         suffix_link: Link::default(),
                         nodes: bnode_nodes,
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((2, 3))],
+                        views: vec![Some((2, 3))],
                         suffix_link: Link::default(),
                         nodes: cnode_nodes,
                     })
                     .add('d', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((9, data.len()))],
+                        views: vec![Some((9, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('x', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((5, data.len()))],
+                        views: vec![Some((5, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
@@ -955,29 +964,29 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((0, ROOT_TO))],
+                views: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((0, 1))],
+                        views: vec![Some((0, 1))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('k', Node{
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((6, data.len()))],
+                                views: vec![Some((6, data.len()))],
                                 nodes: make_children(),
                                 suffix_link: Link::default(),
                             })
                             .add('d', Node{
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((4, data.len()))],
+                                views: vec![Some((4, data.len()))],
                                 nodes: make_children(),
                                 suffix_link: Link::default(),
                             })
                             .add('b', Node{
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((1, data.len()))],
+                                views: vec![Some((1, data.len()))],
                                 nodes: make_children(),
                                 suffix_link: Link::default(),
                             })
@@ -985,25 +994,25 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((1, data.len()))],
+                        views: vec![Some((1, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((2, data.len()))],
+                        views: vec![Some((2, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
                     .add('d', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((4, data.len()))],
+                        views: vec![Some((4, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
                     .add('k', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((6, data.len()))],
+                        views: vec![Some((6, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
@@ -1030,18 +1039,18 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((0, ROOT_TO))],
+                views: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('d', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((0, 1))],
+                        views: vec![Some((0, 1))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add(END as char, end_node(data, expected_endptr.clone()))
                             .add('d', Node {
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((1, data.len()))],
+                                views: vec![Some((1, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             }).run(),
@@ -1067,41 +1076,41 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((0, ROOT_TO))],
+                views: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((0, 2))],
+                        views: vec![Some((0, 2))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((2, data.len()))],
+                                views: vec![Some((2, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             })
                             .add(END as char, Node{
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((4, data.len()))],
+                                views: vec![Some((4, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             }).run(),
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((1, 2))],
+                        views: vec![Some((1, 2))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((2, data.len()))],
+                                views: vec![Some((2, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             })
                             .add(END as char, Node{
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((4, data.len()))],
+                                views: vec![Some((4, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             }).run(),
@@ -1194,22 +1203,22 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                view: vec![Some((0, ROOT_TO))],
+                views: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((1, 2))],
+                        views: vec![Some((1, 2))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('n', Node{
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((2, 4))],
+                                views: vec![Some((2, 4))],
                                 suffix_link: Link::default(),
                                 nodes: NodesBuild::new()
                                     .add('n', Node {
                                         markmask: DEFAULT_MARKS,
-                                        view: vec![Some((4, data.len()))],
+                                        views: vec![Some((4, data.len()))],
                                         suffix_link: Link::default(),
                                         nodes: make_children(),
                                     })
@@ -1221,18 +1230,18 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((0, data.len()))],
+                        views: vec![Some((0, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
                     .add('n', Node{
                         markmask: DEFAULT_MARKS,
-                        view: vec![Some((2, 4))],
+                        views: vec![Some((2, 4))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('n', Node{
                                 markmask: DEFAULT_MARKS,
-                                view: vec![Some((4, data.len()))],
+                                views: vec![Some((4, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             })
@@ -1309,19 +1318,25 @@ mod tests {
         #[test]
         fn basic() {
             let tree = SuffixTree::new("anxnyanyanz", END);
-            assert_eq!(tree.longest_repeat(), "nyan");
+            assert_eq!(tree.longest_repeat(0), "nyan");
 
             let tree = SuffixTree::new("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", END);
-            assert_eq!(tree.longest_repeat(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            assert_eq!(tree.longest_repeat(0), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
             let tree = SuffixTree::new("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG", END);
-            assert_eq!(tree.longest_repeat(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            assert_eq!(tree.longest_repeat(0), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
             let tree = SuffixTree::new("AAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAA", END);
-            assert_eq!(tree.longest_repeat(), "AAAAAAAAAAAAAAAAAA");
+            assert_eq!(tree.longest_repeat(0), "AAAAAAAAAAAAAAAAAA");
 
             let tree = SuffixTree::new(LOREM_IPSUM, END);
-            assert_eq!(tree.longest_repeat(), " Lorem Ipsum ");
+            assert_eq!(tree.longest_repeat(0), " Lorem Ipsum ");
+        }
+
+        #[test]
+        fn absent_word() {
+            let tree = SuffixTree::new(LOREM_IPSUM, END);
+            assert_eq!(tree.longest_repeat(1), "");
         }
 
     }
