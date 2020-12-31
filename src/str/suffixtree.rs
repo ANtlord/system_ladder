@@ -144,7 +144,8 @@ impl<'a> ActivePoint<'a> {
     }
 
     /// Checks if the current node has a child at `key`.
-    fn has_child(&self, key: u8) -> bool {
+    fn has_child(&self) -> bool {
+        let key = self.edge.unwrap();
         // probable redudant check.
         if key == self.end {
             return false;
@@ -162,7 +163,8 @@ impl<'a> ActivePoint<'a> {
         }
     }
 
-    fn is_prefix(&self, key: u8, for_letter: u8) -> bool {
+    fn is_prefix(&self, for_letter: u8) -> bool {
+        let key = self.edge.unwrap();
         let noderef = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
         self.data.as_bytes()[self.length + node.from(self.word_count - 1)] == for_letter
@@ -200,7 +202,8 @@ impl<'a> ActivePoint<'a> {
     ///
     /// This method is invoked when the current node is inner node or it's root. The new child node
     /// carries suffix starts from `current_end`
-    fn add_node(&mut self, at: u8, current_end: usize) -> &Node {
+    fn add_node(&mut self, current_end: usize) -> &Node {
+        let at = self.edge.unwrap();
         let mut noderef = unsafe { self.node.as_mut() };
         let node = Node::new(current_end, self.data.len());
         noderef.nodes[at as usize] = node.into();
@@ -219,8 +222,8 @@ impl<'a> ActivePoint<'a> {
     ///
     /// Render assets/str/suffixtree/split_node.dot to get the picture. Gray nodes don't make
     /// any sense they are just for consistence. Black nodes are affected nodes.
-    fn split_node(&mut self, at: u8, for_letter: u8, current_end: usize) -> &Node {
-        let at = at as usize;
+    fn split_node(&mut self, for_letter: u8, current_end: usize) -> &Node {
+        let at = self.edge.unwrap() as usize;
         let old_node = {
             let mut noderef = unsafe { self.node.as_mut() };
             noderef.nodes[at].0.take().unwrap()
@@ -320,21 +323,19 @@ impl<'a> SuffixTree<'a> {
             remainder += 1;
             while remainder > 0 {
                 debug_assert!(active_point.length <= remainder);
-                let key = match active_point.length {
-                    0 => *byte,
-                    _ => active_point.edge.unwrap(),
-                };
+                if active_point.length == 0 {
+                    active_point.edge = Some(*byte);
+                }
 
-                active_point.edge = Some(key);
-                let inserted_node_link: Link = if !active_point.has_child(key) {
-                    active_point.add_node(key, i).into()
+                let inserted_node_link: Link = if !active_point.has_child() {
+                    active_point.add_node(i).into()
                 } else if active_point.try_follow_edge() {
                     continue;
-                } else if active_point.is_prefix(key, *byte) {
+                } else if active_point.is_prefix(*byte) {
                     active_point.update(&mut last_created_node);
                     continue 'outer;
                 } else {
-                    active_point.split_node(key, *byte, i).into()
+                    active_point.split_node(*byte, i).into()
                 };
 
                 if !active_point.is_root(inserted_node_link) {
@@ -645,7 +646,7 @@ mod tests {
             active_point.edge = Some(*byte);
             let mut last_created_node = Link::default();
             let mut tr = trace.object(format!("`{}` `{}`", *byte as char, *byte).as_ref());
-            let node: &Node = active_point.add_node(key, current_end);
+            let node: &Node = active_point.add_node(current_end);
             let inserted_node_link = node.into();
             last_created_node.set_suffix(inserted_node_link);
             last_created_node = inserted_node_link;
@@ -658,7 +659,7 @@ mod tests {
             let byte = &key;
             active_point.edge = Some(*byte);
             let mut tr = trace.object(format!("`{}` `{}`", *byte as char, *byte).as_ref());
-            let node: &Node = active_point.add_node(key, current_end);
+            let node: &Node = active_point.add_node(current_end);
             let inserted_node_link = node.into();
             last_created_node.set_suffix(inserted_node_link);
             last_created_node = inserted_node_link;
@@ -679,9 +680,9 @@ mod tests {
         {
             let mut last_created_node = Link::default();
             current_end += 1;
-            let key = b'a';
-            let byte = &key;
-            let node = active_point.split_node(key, *byte, current_end);
+            let ref byte = b'a';
+            active_point.edge = Some(*byte);
+            let node = active_point.split_node(*byte, current_end);
             let inserted_node_link = node.into();
             last_created_node.set_suffix(inserted_node_link);
             last_created_node = inserted_node_link;
@@ -689,9 +690,9 @@ mod tests {
             active_point.length -= 1;
             active_point.edge = Some(b'a'); // It's not designed by Ukknen algorithm but allows to corrupt memory
 
-            let key = b'a';
-            let byte = &key;
-            let node = active_point.split_node(key, *byte, current_end);
+            let ref byte = b'a';
+            active_point.edge = Some(*byte);
+            let node = active_point.split_node(*byte, current_end);
             let inserted_node_link: Link = node.into();
             last_created_node.set_suffix(inserted_node_link);
             last_created_node = inserted_node_link;
