@@ -71,8 +71,7 @@ impl From<Node> for Child {
 }
 
 struct Node {
-    from: usize,
-    to: usize, // 0 for root, data.len() for a leaf
+    view: Vec<Option<(usize, usize)>>,
     nodes: [Child; 256],
     suffix_link: Link,
     markmask: u8, // 00 - root, 01 - appears in the first word only
@@ -80,23 +79,28 @@ struct Node {
 
 impl Node {
     fn new(from: usize, to: usize) -> Self {
-        Self {from, to, nodes: make_children(), suffix_link: Link::default(), markmask: 1}
-    }
-
-    fn inner(from: usize, to: usize) -> Self {
-        Self {from, to, nodes: make_children(), suffix_link: Link::default(), markmask: 1}
+        Self {
+            view: vec![Some((from, to))],
+            nodes: make_children(),
+            suffix_link: Link::default(),
+            markmask: 1,
+        }
     }
 
     fn boxed(from: usize, to: usize) -> Box<Self> {
         Box::new(Self::new(from, to))
     }
 
-    fn len(&self) -> usize {
-        self.finished_at() - self.from
+    fn len(&self, at: usize) -> usize {
+        self.to(at) - self.from(at)
     }
 
-    fn finished_at(&self) -> usize {
-        self.to
+    fn from(&self, at: usize) -> usize {
+        self.view[at].unwrap().0
+    }
+
+    fn to(&self, at: usize) -> usize {
+        self.view[at].unwrap().1
     }
 }
 
@@ -119,11 +123,12 @@ struct ActivePoint<'a> {
     length: usize,
     root: Box<Node>,
     end: u8,
+    word_count: usize,
 }
 
 impl<'a> ActivePoint<'a> {
-    fn new(data: &'a str, root: Box<Node>, end: u8) -> Self {
-        Self { data, node: NonNull::from(root.as_ref()), edge: None, length: 0, root, end }
+    fn new(data: &'a str, root: Box<Node>, end: u8, word_count: usize) -> Self {
+        Self { data, node: NonNull::from(root.as_ref()), edge: None, length: 0, root, end, word_count }
     }
 
     /// Updates active length and links last node which was splitted or a new node created from.
@@ -160,7 +165,7 @@ impl<'a> ActivePoint<'a> {
     fn is_prefix(&self, key: u8, for_letter: u8) -> bool {
         let noderef = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
-        self.data.as_bytes()[self.length + node.from] == for_letter
+        self.data.as_bytes()[self.length + node.from(self.word_count - 1)] == for_letter
     }
 
     /// Move further if the active length is in the end of the its edge. 
@@ -180,9 +185,9 @@ impl<'a> ActivePoint<'a> {
         let key = self.edge.take().unwrap();
         let noderef: &Node = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
-        if self.length >= node.len() {
-            self.length -= node.len();
-            self.edge = Some(self.data.as_bytes()[node.to]);
+        if self.length >= node.len(self.word_count - 1) {
+            self.length -= node.len(self.word_count - 1);
+            self.edge = Some(self.data.as_bytes()[node.to(self.word_count - 1)]);
             self.node = NonNull::from(node.as_ref());
             true
         } else {
@@ -228,11 +233,12 @@ impl<'a> ActivePoint<'a> {
     }
 
     fn _split_node(&self, mut node: Box<Node>, for_letter: u8, current_end: usize) -> Node {
-        let to = node.finished_at();
+        let to = node.to(self.word_count - 1);
         debug_assert!(self.length < to);
-        let divide_suffix_at = node.from + self.length;
-        let mut new_node = Node::inner(node.from, divide_suffix_at);
-        node.from = divide_suffix_at;
+        let from = node.from(self.word_count - 1);
+        let divide_suffix_at = from + self.length;
+        let mut new_node = Node::new(from, divide_suffix_at);
+        node.view[self.word_count - 1] = Some((divide_suffix_at, node.to(self.word_count - 1)));
         new_node.nodes[self.data.as_bytes()[divide_suffix_at] as usize] = Child(Some(node));
         new_node.nodes[for_letter as usize] = Node::new(current_end, self.data.len()).into();
         new_node
@@ -306,9 +312,8 @@ impl<'a> SuffixTree<'a> {
         let mut root = self.root;
         let word_count = self.word_count + 1;
         root.markmask = 0b11;
-        let mut active_point = ActivePoint::new(input, root, end);
+        let mut active_point = ActivePoint::new(input, root, end, word_count);
         let mut remainder = 0; // how many nodes should be inserted.
-        let mut word_mark = 1u8; // bitmask indicates index of current word.
 
         'outer: for (i, byte) in input.as_bytes().iter().chain(&[end]).enumerate() {
             let mut last_created_node = Link::default();
@@ -375,11 +380,11 @@ impl<'a> SuffixTree<'a> {
         let mut node_byte_count = 1;
         let mut pattern_len = 1;
         for byte in pattern_iter {
-            let mut text_index = node.from + node_byte_count;
-            if text_index >= node.finished_at() {
+            let mut text_index = node.from(0) + node_byte_count;
+            if text_index >= node.to(0) {
                 node = node.nodes.get(*byte.borrow() as usize)?.0.as_ref()?;
                 node_byte_count = 0;
-                text_index = node.from;
+                text_index = node.from(0);
             }
 
             if self.data[0].as_bytes()[text_index] != *byte.borrow() {
@@ -390,11 +395,11 @@ impl<'a> SuffixTree<'a> {
             pattern_len += 1;
         }
 
-        Some(node.from + node_byte_count - pattern_len)
+        Some(node.from(0) + node_byte_count - pattern_len)
     }
 
     fn is_leaf(&self, node: &Node) -> bool {
-        self.data[0].len() == node.to
+        self.data[0].len() == node.to(0)
     }
 
     fn longest_repeat(&self) -> &'a str {
@@ -403,17 +408,17 @@ impl<'a> SuffixTree<'a> {
         let (mut ret_from, mut repeat_len) = (0, 0);
         while let Some((node, len)) = stack.pop() {
             if self.is_leaf(node) {
-                let total_len = len - node.len();
+                let total_len = len - node.len(0);
                 if total_len > repeat_len {
                     repeat_len = total_len;
-                    ret_from = node.from - repeat_len;
+                    ret_from = node.from(0) - repeat_len;
                 }
 
                 continue;
             }
 
             let children = node.nodes.iter().filter_map(|x| x.0.as_ref());
-            children.for_each(|x| stack.push((x, len + x.len())));
+            children.for_each(|x| stack.push((x, len + x.len(0))));
         }
 
         &self.data[0][ret_from .. ret_from + repeat_len]
@@ -426,17 +431,17 @@ impl<'a> SuffixTree<'a> {
         while let Some((node, len)) = stack.pop() {
             dbg!(node);
             if node.markmask != 0b11u8 {
-                let total_len = len - node.len();
+                let total_len = len - node.len(0);
                 if total_len > repeat_len {
                     repeat_len = total_len;
-                    ret_from = node.from - repeat_len;
+                    ret_from = node.from(0) - repeat_len;
                 }
 
                 continue;
             }
 
             let children = node.nodes.iter().filter_map(|x| x.0.as_ref());
-            children.for_each(|x| stack.push((x, len + x.len())));
+            children.for_each(|x| stack.push((x, len + x.len(0))));
         }
 
         &self.data[0][ret_from .. ret_from + repeat_len]
@@ -447,8 +452,7 @@ impl<'a> SuffixTree<'a> {
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Node")
-            .field("from", &self.from)
-            .field("to", &self.to)
+            .field("view", &self.view)
             .field("suffix_link", &self.suffix_link)
             .field("markmask", &format!("{:b}", self.markmask))
             .finish()
@@ -464,8 +468,7 @@ mod tests {
     fn clone_leaf(from: &Child) -> Child {
         Child(from.0.as_ref().map(|from| {
             Box::new(Node {
-                from: from.from,
-                to: from.to.clone(),
+                view: from.view.clone(),
                 nodes: make_children(),
                 suffix_link: Link::default(),
                 markmask: from.markmask,
@@ -507,8 +510,7 @@ mod tests {
 
     impl PartialEq for Node {
         fn eq(&self, other: &Self) -> bool {
-            let res = self.from == other.from;
-            let res = res && self.to == other.to;
+            let res = self.view == other.view;
             res && self.suffix_link == other.suffix_link
         }
     }
@@ -522,8 +524,7 @@ mod tests {
     fn end_node(data: &str, expected_endptr: Rc<RefCell<usize>>) -> Node {
         Node {
             markmask: DEFAULT_MARKS,
-            from: data.len(),
-            to: data.len(),
+            view: vec![Some((data.len(), data.len()))],
             suffix_link: Link::default(),
             nodes: NodesBuild::new().run(),
         }
@@ -580,28 +581,24 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                from: 0,
-                to: ROOT_TO,
+                view: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 0,
-                        to: data.len(),
+                        view: vec![Some((0, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 1,
-                        to: data.len(),
+                        view: vec![Some((1, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 2,
-                        to: data.len(),
+                        view: vec![Some((2, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
@@ -630,7 +627,7 @@ mod tests {
 
         let mut root = Box::new(Node::new(0, ROOT_TO));
         root.markmask = 0b11;
-        let mut active_point = ActivePoint::new(input, root, END);
+        let mut active_point = ActivePoint::new(input, root, END, 1);
 
         {
             let key = b'a';
@@ -719,15 +716,13 @@ mod tests {
         let anode_nodes = NodesBuild::new()
             .add('c', Node{
                 markmask: DEFAULT_MARKS,
-                from: 2,
-                to: data.len(),
+                view: vec![Some((2, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
             .add('x', Node{
                 markmask: DEFAULT_MARKS,
-                from: 5, // TODO: what's a number correct (by design)????
-                to: data.len(),
+                view: vec![Some((5, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -742,35 +737,30 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                from: 0,
-                to: ROOT_TO,
+                view: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 0,
-                        to: 2,
+                        view: vec![Some((0, 2))],
                         suffix_link: Link::default(),
                         nodes: anode_nodes,
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 1,
-                        to: 2,
+                        view: vec![Some((1, 2))],
                         suffix_link: Link::default(),
                         nodes: bnode_nodes,
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 2,
-                        to: data.len(),
+                        view: vec![Some((2, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('x', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 5,
-                        to: data.len(),
+                        view: vec![Some((5, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
@@ -817,15 +807,13 @@ mod tests {
         let cnode_nodes = NodesBuild::new()
             .add('a', Node{
                 markmask: DEFAULT_MARKS,
-                from: 3,
-                to: data.len(),
+                view: vec![Some((3, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
             .add('d', Node{
                 markmask: DEFAULT_MARKS,
-                from: 9,
-                to: data.len(),
+                view: vec![Some((9, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -840,15 +828,13 @@ mod tests {
         let bnode_nodes = NodesBuild::new()
             .add('c', Node{
                 markmask: DEFAULT_MARKS,
-                from: 2,
-                to: 3,
+                view: vec![Some((2, 3))],
                 suffix_link: Link::default(),
                 nodes: b_cnode_nodes,
             })
             .add('x', Node{
                 markmask: DEFAULT_MARKS,
-                from: 5, // TODO: what's a number correct (by design)????
-                to: data.len(),
+                view: vec![Some((5, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -857,15 +843,13 @@ mod tests {
         let anode_nodes = NodesBuild::new()
             .add('c', Node{
                 markmask: DEFAULT_MARKS,
-                from: 2,
-                to: 3,
+                view: vec![Some((2, 3))],
                 suffix_link: Link::default(),
                 nodes: ab_cnode_nodes,
             })
             .add('x', Node{
                 markmask: DEFAULT_MARKS,
-                from: 5, // TODO: what's a number correct (by design)????
-                to: data.len(),
+                view: vec![Some((5, data.len()))],
                 suffix_link: Link::default(),
                 nodes: NodesBuild::new().run(),
             })
@@ -877,42 +861,36 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                from: 0,
-                to: ROOT_TO,
+                view: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 0,
-                        to: 2,
+                        view: vec![Some((0, 2))],
                         suffix_link: Link::default(),
                         nodes: anode_nodes,
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 1,
-                        to: 2,
+                        view: vec![Some((1, 2))],
                         suffix_link: Link::default(),
                         nodes: bnode_nodes,
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 2,
-                        to: 3,
+                        view: vec![Some((2, 3))],
                         suffix_link: Link::default(),
                         nodes: cnode_nodes,
                     })
                     .add('d', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 9,
-                        to: data.len(),
+                        view: vec![Some((9, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
                     .add('x', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 5,
-                        to: data.len(),
+                        view: vec![Some((5, data.len()))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new().run(),
                     })
@@ -977,34 +955,29 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                from: 0,
-                to: ROOT_TO,
+                view: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 0,
-                        to: 1,
+                        view: vec![Some((0, 1))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('k', Node{
                                 markmask: DEFAULT_MARKS,
-                                from: 6,
-                                to: data.len(),
+                                view: vec![Some((6, data.len()))],
                                 nodes: make_children(),
                                 suffix_link: Link::default(),
                             })
                             .add('d', Node{
                                 markmask: DEFAULT_MARKS,
-                                from: 4,
-                                to: data.len(),
+                                view: vec![Some((4, data.len()))],
                                 nodes: make_children(),
                                 suffix_link: Link::default(),
                             })
                             .add('b', Node{
                                 markmask: DEFAULT_MARKS,
-                                from: 1,
-                                to: data.len(),
+                                view: vec![Some((1, data.len()))],
                                 nodes: make_children(),
                                 suffix_link: Link::default(),
                             })
@@ -1012,29 +985,25 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 1,
-                        to: data.len(),
+                        view: vec![Some((1, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 2,
-                        to: data.len(),
+                        view: vec![Some((2, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
                     .add('d', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 4,
-                        to: data.len(),
+                        view: vec![Some((4, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
                     .add('k', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 6,
-                        to: data.len(),
+                        view: vec![Some((6, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
@@ -1061,21 +1030,18 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                from: 0,
-                to: ROOT_TO,
+                view: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('d', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 0,
-                        to: 1,
+                        view: vec![Some((0, 1))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add(END as char, end_node(data, expected_endptr.clone()))
                             .add('d', Node {
                                 markmask: DEFAULT_MARKS,
-                                from: 1,
-                                to: data.len(),
+                                view: vec![Some((1, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             }).run(),
@@ -1101,48 +1067,41 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                from: 0,
-                to: ROOT_TO,
+                view: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 0,
-                        to: 2,
+                        view: vec![Some((0, 2))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
                                 markmask: DEFAULT_MARKS,
-                                from: 2,
-                                to: data.len(),
+                                view: vec![Some((2, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             })
                             .add(END as char, Node{
                                 markmask: DEFAULT_MARKS,
-                                from: 4,
-                                to: data.len(),
+                                view: vec![Some((4, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             }).run(),
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 1,
-                        to: 2,
+                        view: vec![Some((1, 2))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
                                 markmask: DEFAULT_MARKS,
-                                from: 2,
-                                to: data.len(),
+                                view: vec![Some((2, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             })
                             .add(END as char, Node{
                                 markmask: DEFAULT_MARKS,
-                                from: 4,
-                                to: data.len(),
+                                view: vec![Some((4, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             }).run(),
@@ -1235,26 +1194,22 @@ mod tests {
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                from: 0,
-                to: ROOT_TO,
+                view: vec![Some((0, ROOT_TO))],
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 1,
-                        to: 2,
+                        view: vec![Some((1, 2))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('n', Node{
                                 markmask: DEFAULT_MARKS,
-                                from: 2,
-                                to: 4,
+                                view: vec![Some((2, 4))],
                                 suffix_link: Link::default(),
                                 nodes: NodesBuild::new()
                                     .add('n', Node {
                                         markmask: DEFAULT_MARKS,
-                                        from: 4,
-                                        to: data.len(),
+                                        view: vec![Some((4, data.len()))],
                                         suffix_link: Link::default(),
                                         nodes: make_children(),
                                     })
@@ -1266,21 +1221,18 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 0,
-                        to: data.len(),
+                        view: vec![Some((0, data.len()))],
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
                     .add('n', Node{
                         markmask: DEFAULT_MARKS,
-                        from: 2,
-                        to: 4,
+                        view: vec![Some((2, 4))],
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('n', Node{
                                 markmask: DEFAULT_MARKS,
-                                from: 4,
-                                to: data.len(),
+                                view: vec![Some((4, data.len()))],
                                 suffix_link: Link::default(),
                                 nodes: make_children(),
                             })
