@@ -16,6 +16,7 @@ use crate::trace::Trace;
 use crate::container::Stack;
 
 const END: u8 = b'\0';
+const DELIMETER: u8 = 0x01; // SOH like in FIX protocol.
 const ROOT_TO: usize = 0;
 
 static mut TR: Option<Trace> = None;
@@ -61,12 +62,6 @@ impl<'a> Default for Link<'a> {
 
 struct Child<'a>(Option<Box<Node<'a>>>);
 
-impl<'a> Child<'a> {
-    fn new(data: &'a str, from: usize, to: usize) -> Self {
-        Self(Some(Node::boxed(data, from, to)))
-    }
-}
-
 impl<'a> From<Node<'a>> for Child<'a> {
     fn from(n: Node<'a>) -> Self {
         Self(Some(Box::new(n)))
@@ -79,15 +74,16 @@ struct Node<'a> {
     to: usize, // 0 for root, data.len() for a leaf
     nodes: [Child<'a>; 256],
     suffix_link: Link<'a>,
+    markmask: u8, // 00 - root, 01 - appears in the first word only
 }
 
 impl<'a> Node<'a> {
     fn new(data: &'a str, from: usize, to: usize) -> Self {
-        Self {data, from, to, nodes: make_children(), suffix_link: Link::default()}
+        Self {data, from, to, nodes: make_children(), suffix_link: Link::default(), markmask: 1}
     }
 
     fn inner(data: &'a str, from: usize, to: usize) -> Self {
-        Self {data, from, to, nodes: make_children(), suffix_link: Link::default()}
+        Self {data, from, to, nodes: make_children(), suffix_link: Link::default(), markmask: 1}
     }
 
     fn boxed(data: &'a str, from: usize, to: usize) -> Box<Self> {
@@ -120,12 +116,13 @@ struct ActivePoint<'a> {
     edge: Option<u8>,
     length: usize,
     root: Box<Node<'a>>,
+    end: u8,
 }
 
 impl<'a> ActivePoint<'a> {
-    fn new(data: &'a str) -> Self {
+    fn new(data: &'a str, end: u8) -> Self {
         let mut root = Box::new(Node::new(data, 0, ROOT_TO));
-        Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root }
+        Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root, end }
     }
 
     /// Updates active length and links last node which was splitted or a new node created from.
@@ -143,7 +140,7 @@ impl<'a> ActivePoint<'a> {
     /// Checks if the current node has a child at `key`.
     fn has_child(&self, key: u8) -> bool {
         // probable redudant check.
-        if key == END {
+        if key == self.end {
             return false;
         }
 
@@ -199,8 +196,8 @@ impl<'a> ActivePoint<'a> {
     /// carries suffix starts from `current_end`
     fn add_node(&mut self, at: u8, current_end: usize) -> &Node<'a> {
         let mut noderef = unsafe { self.node.as_mut() };
-        let ch = Child::new(self.root.data, current_end, self.root.data.len());
-        noderef.nodes[at as usize] = ch;
+        let node = Node::new(self.root.data, current_end, self.root.data.len());
+        noderef.nodes[at as usize] = node.into();
         noderef
     }
 
@@ -304,10 +301,10 @@ impl<'a> SuffixTree<'a> {
     ///
     /// - Otherwise change the active node to the node the inserted node has suffix link to or to
     /// the root.
-    fn new<T: AsRef<str> + ?Sized>(input: &'a T) -> Self {
-        let mut active_point = ActivePoint::new(input.as_ref());
+    fn new<T: AsRef<str> + ?Sized>(input: &'a T, end: u8) -> Self {
+        let mut active_point = ActivePoint::new(input.as_ref(), end);
         let mut remainder = 0; // how many nodes should be inserted.
-        'outer: for (i, byte) in input.as_ref().as_bytes().iter().chain(&[END]).enumerate() {
+        'outer: for (i, byte) in input.as_ref().as_bytes().iter().chain(&[end]).enumerate() {
             let mut last_created_node = Link::default();
             remainder += 1;
             while remainder > 0 {
@@ -340,7 +337,7 @@ impl<'a> SuffixTree<'a> {
                     active_point.length -= 1;
                     let next_byte_position_to_insert = i - remainder + 1;
                     active_point.edge = Some(if input.as_ref().len() == next_byte_position_to_insert {
-                        END
+                        end
                     } else {
                         input.as_ref().as_bytes()[next_byte_position_to_insert]
                     });
@@ -420,6 +417,7 @@ impl<'a> fmt::Debug for Node<'a> {
 mod tests {
     use super::*;
     use std::fmt;
+    const DEFAULT_MARKS: u8 = 1u8;
 
     fn clone_leaf<'a>(from: &Child<'a>) -> Child<'a> {
         Child(from.0.as_ref().map(|from| {
@@ -429,6 +427,7 @@ mod tests {
                 to: from.to.clone(),
                 nodes: make_children(),
                 suffix_link: Link::default(),
+                markmask: from.markmask,
             })
         }))
         
@@ -482,6 +481,7 @@ mod tests {
 
     fn end_node(data: &str, expected_endptr: Rc<RefCell<usize>>) -> Node {
         Node {
+            markmask: DEFAULT_MARKS,
             data,
             from: data.len(),
             to: data.len(),
@@ -533,16 +533,18 @@ mod tests {
     ///      * c$
     fn no_repeats() {
         let data = "abc";
-        let tree = SuffixTree::new(data);
+        let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let expected_tree = SuffixTree{
             root: Node {
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 0,
                         to: data.len(),
@@ -550,6 +552,7 @@ mod tests {
                         nodes: NodesBuild::new().run(),
                     })
                     .add('b', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 1,
                         to: data.len(),
@@ -557,6 +560,7 @@ mod tests {
                         nodes: NodesBuild::new().run(),
                     })
                     .add('c', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 2,
                         to: data.len(),
@@ -586,7 +590,7 @@ mod tests {
 
         let input = "ababx";
 
-        let mut active_point = ActivePoint::new(input.as_ref());
+        let mut active_point = ActivePoint::new(input.as_ref(), END);
 
         {
             let key = b'a';
@@ -670,10 +674,11 @@ mod tests {
     /// assets/str/suffixtree/two_repeats.dot
     fn two_repeats() {
         let data = "abcabx";
-        let tree = SuffixTree::new(data);
+        let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let anode_nodes = NodesBuild::new()
             .add('c', Node{
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 2,
                 to: data.len(),
@@ -681,6 +686,7 @@ mod tests {
                 nodes: NodesBuild::new().run(),
             })
             .add('x', Node{
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 5, // TODO: what's a number correct (by design)????
                 to: data.len(),
@@ -694,12 +700,14 @@ mod tests {
 
         let mut expected_tree = SuffixTree{
             root: Node {
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 0,
                         to: 2,
@@ -707,6 +715,7 @@ mod tests {
                         nodes: anode_nodes,
                     })
                     .add('b', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 1,
                         to: 2,
@@ -714,6 +723,7 @@ mod tests {
                         nodes: bnode_nodes,
                     })
                     .add('c', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 2,
                         to: data.len(),
@@ -721,6 +731,7 @@ mod tests {
                         nodes: NodesBuild::new().run(),
                     })
                     .add('x', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 5,
                         to: data.len(),
@@ -765,10 +776,11 @@ mod tests {
     /// assets/str/suffixtree/three_repeats.dot
     fn three_repeats() {
         let data = "abcabxabcd";
-        let tree = SuffixTree::new(data);
+        let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(10));
         let cnode_nodes = NodesBuild::new()
             .add('a', Node{
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 3,
                 to: data.len(),
@@ -776,6 +788,7 @@ mod tests {
                 nodes: NodesBuild::new().run(),
             })
             .add('d', Node{
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 9,
                 to: data.len(),
@@ -792,6 +805,7 @@ mod tests {
 
         let bnode_nodes = NodesBuild::new()
             .add('c', Node{
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 2,
                 to: 3,
@@ -799,6 +813,7 @@ mod tests {
                 nodes: b_cnode_nodes,
             })
             .add('x', Node{
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 5, // TODO: what's a number correct (by design)????
                 to: data.len(),
@@ -809,6 +824,7 @@ mod tests {
 
         let anode_nodes = NodesBuild::new()
             .add('c', Node{
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 2,
                 to: 3,
@@ -816,6 +832,7 @@ mod tests {
                 nodes: ab_cnode_nodes,
             })
             .add('x', Node{
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 5, // TODO: what's a number correct (by design)????
                 to: data.len(),
@@ -826,12 +843,14 @@ mod tests {
 
         let mut expected_tree = SuffixTree{
             root: Node {
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 0,
                         to: 2,
@@ -839,6 +858,7 @@ mod tests {
                         nodes: anode_nodes,
                     })
                     .add('b', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 1,
                         to: 2,
@@ -846,6 +866,7 @@ mod tests {
                         nodes: bnode_nodes,
                     })
                     .add('c', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 2,
                         to: 3,
@@ -853,6 +874,7 @@ mod tests {
                         nodes: cnode_nodes,
                     })
                     .add('d', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 9,
                         to: data.len(),
@@ -860,6 +882,7 @@ mod tests {
                         nodes: NodesBuild::new().run(),
                     })
                     .add('x', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 5,
                         to: data.len(),
@@ -918,23 +941,26 @@ mod tests {
     /// assets/str/suffixtree/inner_node_extend.dot
     fn inner_node_extend() {
         let data = "abcadak";
-        let tree = SuffixTree::new(data);
+        let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
 
         let mut expected_tree = SuffixTree{
             root: Node {
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 0,
                         to: 1,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('k', Node{
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 6,
                                 to: data.len(),
@@ -942,6 +968,7 @@ mod tests {
                                 suffix_link: Link::default(),
                             })
                             .add('d', Node{
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 4,
                                 to: data.len(),
@@ -949,6 +976,7 @@ mod tests {
                                 suffix_link: Link::default(),
                             })
                             .add('b', Node{
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 1,
                                 to: data.len(),
@@ -958,6 +986,7 @@ mod tests {
                             .run(),
                     })
                     .add('b', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 1,
                         to: data.len(),
@@ -965,6 +994,7 @@ mod tests {
                         nodes: make_children(),
                     })
                     .add('c', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 2,
                         to: data.len(),
@@ -972,6 +1002,7 @@ mod tests {
                         nodes: make_children(),
                     })
                     .add('d', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 4,
                         to: data.len(),
@@ -979,6 +1010,7 @@ mod tests {
                         nodes: make_children(),
                     })
                     .add('k', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 6,
                         to: data.len(),
@@ -999,17 +1031,19 @@ mod tests {
     /// assets/str/suffixtree/pair_of_letters.dot
     fn pair_of_letters() {
         let data = "dd";
-        let tree = SuffixTree::new(data);
+        let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
 
         let mut expected_tree = SuffixTree{
             root: Node {
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('d', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 0,
                         to: 1,
@@ -1017,6 +1051,7 @@ mod tests {
                         nodes: NodesBuild::new()
                             .add(END as char, end_node(data, expected_endptr.clone()))
                             .add('d', Node {
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 1,
                                 to: data.len(),
@@ -1037,22 +1072,25 @@ mod tests {
     /// assets/str/suffixtree/undefined_repeat.dot
     fn undefined_repeat() {
         let data = "abab";
-        let tree = SuffixTree::new(data);
+        let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let mut expected_tree = SuffixTree{
             root: Node {
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 0,
                         to: 2,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 2,
                                 to: data.len(),
@@ -1060,6 +1098,7 @@ mod tests {
                                 nodes: make_children(),
                             })
                             .add(END as char, Node{
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 4,
                                 to: data.len(),
@@ -1068,12 +1107,14 @@ mod tests {
                             }).run(),
                     })
                     .add('b', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 1,
                         to: 2,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 2,
                                 to: data.len(),
@@ -1081,6 +1122,7 @@ mod tests {
                                 nodes: make_children(),
                             })
                             .add(END as char, Node{
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 4,
                                 to: data.len(),
@@ -1146,7 +1188,7 @@ mod tests {
     ///
     /// assets/str/suffixtree/post_suffix_linking.dot
     fn post_suffix_linking() {
-        let tree = SuffixTree::new("anxnyanyanz");
+        let tree = SuffixTree::new("anxnyanyanz", END);
     }
 
 
@@ -1158,7 +1200,7 @@ mod tests {
     /// The red node changes its parent on the second step but it must keep the same place in RAM
     /// to keep last_created_node valid.
     fn suffix_link_from_recreated_node() {
-        let tree = SuffixTree::new("GAAA");
+        let tree = SuffixTree::new("GAAA", END);
     }
 
     #[test]
@@ -1168,28 +1210,32 @@ mod tests {
     /// It has only a new edge from root at key `$`.
     fn inner_node_split() {
         let data = "banana";
-        let tree = SuffixTree::new(data);
+        let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let mut expected_tree = SuffixTree{
             root: Node {
+                markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 1,
                         to: 2,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('n', Node{
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 2,
                                 to: 4,
                                 suffix_link: Link::default(),
                                 nodes: NodesBuild::new()
                                     .add('n', Node {
+                                        markmask: DEFAULT_MARKS,
                                         data,
                                         from: 4,
                                         to: data.len(),
@@ -1203,6 +1249,7 @@ mod tests {
                             .run(),
                     })
                     .add('b', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 0,
                         to: data.len(),
@@ -1210,12 +1257,14 @@ mod tests {
                         nodes: make_children(),
                     })
                     .add('n', Node{
+                        markmask: DEFAULT_MARKS,
                         data,
                         from: 2,
                         to: 4,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('n', Node{
+                                markmask: DEFAULT_MARKS,
                                 data,
                                 from: 4,
                                 to: data.len(),
@@ -1260,30 +1309,30 @@ mod tests {
 
         #[test]
         fn positive(){
-            let tree = SuffixTree::new("abcabx");
+            let tree = SuffixTree::new("abcabx", END);
             let position = tree.find("bx".bytes());
             assert_eq!(position, Some(4));
 
-            let tree = SuffixTree::new("a");
+            let tree = SuffixTree::new("a", END);
             let position = tree.find("a".bytes());
             assert_eq!(position, Some(0));
 
-            let tree = SuffixTree::new(LOREM_IPSUM);
+            let tree = SuffixTree::new(LOREM_IPSUM, END);
             let position = tree.find("dummy".bytes());
             assert_eq!(position, Some(23));
         }
 
         #[test]
         fn negative(){
-            let tree = SuffixTree::new(LOREM_IPSUM);
+            let tree = SuffixTree::new(LOREM_IPSUM, END);
             let position = tree.find("shadow".bytes());
             assert_eq!(position, None);
 
-            let tree = SuffixTree::new("");
+            let tree = SuffixTree::new("", END);
             let position = tree.find("some".bytes());
             assert_eq!(position, None);
 
-            let tree = SuffixTree::new("abc");
+            let tree = SuffixTree::new("abc", END);
             let position = tree.find("ac".bytes());
             assert_eq!(position, None);
         }
@@ -1294,21 +1343,29 @@ mod tests {
 
         #[test]
         fn basic() {
-            let tree = SuffixTree::new("anxnyanyanz");
+            let tree = SuffixTree::new("anxnyanyanz", END);
             assert_eq!(tree.longest_repeat(), "nyan");
 
-            let tree = SuffixTree::new("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            let tree = SuffixTree::new("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", END);
             assert_eq!(tree.longest_repeat(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
-            let tree = SuffixTree::new("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG");
+            let tree = SuffixTree::new("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG", END);
             assert_eq!(tree.longest_repeat(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
-            let tree = SuffixTree::new("AAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAA");
+            let tree = SuffixTree::new("AAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAA", END);
             assert_eq!(tree.longest_repeat(), "AAAAAAAAAAAAAAAAAA");
 
-            let tree = SuffixTree::new(LOREM_IPSUM);
+            let tree = SuffixTree::new(LOREM_IPSUM, END);
             assert_eq!(tree.longest_repeat(), " Lorem Ipsum ");
 
+        }
+
+        #[test]
+        fn longest_common_substring() {
+            let left = "qweasd";
+            let right = "qwerty";
+            let total = format!("{}{}{}", left, DELIMETER, right);
+            let tree = SuffixTree::new(&total, END);
         }
     }
 
