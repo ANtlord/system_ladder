@@ -32,7 +32,9 @@ fn diprint(val: impl AsRef<str>) {
 static LOREM_IPSUM: &str = include_str!("lorem_ipsum.txt");
 
 struct SuffixTree<'a> {
-    root: Node<'a>,
+    root: Box<Node<'a>>,
+    word_count: usize,
+    end: u8,
 }
 
 // pub struct Link<'a>(Cell<*mut Node<'a>>);
@@ -120,8 +122,7 @@ struct ActivePoint<'a> {
 }
 
 impl<'a> ActivePoint<'a> {
-    fn new(data: &'a str, end: u8) -> Self {
-        let mut root = Box::new(Node::new(data, 0, ROOT_TO));
+    fn new(root: Box<Node<'a>>, end: u8) -> Self {
         Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root, end }
     }
 
@@ -301,10 +302,16 @@ impl<'a> SuffixTree<'a> {
     ///
     /// - Otherwise change the active node to the node the inserted node has suffix link to or to
     /// the root.
-    fn new<T: AsRef<str> + ?Sized>(input: &'a T, end: u8) -> Self {
-        let mut active_point = ActivePoint::new(input.as_ref(), end);
+    fn extend(self, input: &'a str) -> Self {
+        let end = self.end;
+        let mut root = self.root;
+        let word_count = self.word_count + 1;
+        root.markmask = 0b11;
+        let mut active_point = ActivePoint::new(root, end);
         let mut remainder = 0; // how many nodes should be inserted.
-        'outer: for (i, byte) in input.as_ref().as_bytes().iter().chain(&[end]).enumerate() {
+        let mut word_mark = 1u8; // bitmask indicates index of current word.
+
+        'outer: for (i, byte) in input.as_bytes().iter().chain(&[end]).enumerate() {
             let mut last_created_node = Link::default();
             remainder += 1;
             while remainder > 0 {
@@ -336,10 +343,10 @@ impl<'a> SuffixTree<'a> {
                 if active_point.is_at_root() && active_point.length > 0 { // r1
                     active_point.length -= 1;
                     let next_byte_position_to_insert = i - remainder + 1;
-                    active_point.edge = Some(if input.as_ref().len() == next_byte_position_to_insert {
+                    active_point.edge = Some(if input.len() == next_byte_position_to_insert {
                         end
                     } else {
-                        input.as_ref().as_bytes()[next_byte_position_to_insert]
+                        input.as_bytes()[next_byte_position_to_insert]
                     });
 
                 } else { // r3
@@ -348,7 +355,17 @@ impl<'a> SuffixTree<'a> {
             }
         }
 
-        Self{root: *active_point.root}
+        Self {
+            root: active_point.root,
+            end: active_point.end,
+            word_count,
+        }
+    }
+
+    fn new<T: AsRef<str> + ?Sized>(input: &'a T, end: u8) -> Self {
+        let mut root = Box::new(Node::new(input.as_ref(), 0, ROOT_TO));
+        root.markmask = 0b11;
+        Self{root, end, word_count: 0}.extend(input.as_ref())
     }
 
     fn find<Byte: Borrow<u8>>(&self, mut pattern_iter: impl Iterator<Item=Byte>) -> Option<usize> {
@@ -399,6 +416,29 @@ impl<'a> SuffixTree<'a> {
 
         &self.root.data[ret_from .. ret_from + repeat_len]
     }
+
+    fn longest_common_substring(&self) -> &'a str {
+        let mut stack = Stack::new();
+        stack.push((&self.root, 0));
+        let (mut ret_from, mut repeat_len) = (0, 0);
+        while let Some((node, len)) = stack.pop() {
+            dbg!(node);
+            if node.markmask != 0b11u8 {
+                let total_len = len - node.len();
+                if total_len > repeat_len {
+                    repeat_len = total_len;
+                    ret_from = node.from - repeat_len;
+                }
+
+                continue;
+            }
+
+            let children = node.nodes.iter().filter_map(|x| x.0.as_ref());
+            children.for_each(|x| stack.push((x, len + x.len())));
+        }
+
+        &self.root.data[ret_from .. ret_from + repeat_len]
+    }
 }
 
 #[cfg(debug_assertions)]
@@ -409,6 +449,7 @@ impl<'a> fmt::Debug for Node<'a> {
             .field("from", &self.from)
             .field("to", &self.to)
             .field("suffix_link", &self.suffix_link)
+            .field("markmask", &format!("{:b}", self.markmask))
             .finish()
     }
 }
@@ -536,7 +577,9 @@ mod tests {
         let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let expected_tree = SuffixTree{
-            root: Node {
+            word_count: 1,
+            end: END,
+            root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
@@ -569,7 +612,7 @@ mod tests {
                     })
                     .run(),
                 suffix_link: Link::default(),
-            },
+            }),
         };
 
         test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
@@ -590,7 +633,9 @@ mod tests {
 
         let input = "ababx";
 
-        let mut active_point = ActivePoint::new(input.as_ref(), END);
+        let mut root = Box::new(Node::new(input.as_ref(), 0, ROOT_TO));
+        root.markmask = 0b11;
+        let mut active_point = ActivePoint::new(root, END);
 
         {
             let key = b'a';
@@ -699,7 +744,9 @@ mod tests {
         (0 .. 256).for_each(|i| bnode_nodes[i] = clone_leaf(&anode_nodes[i]));
 
         let mut expected_tree = SuffixTree{
-            root: Node {
+            word_count: 1,
+            end: END,
+            root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
@@ -740,7 +787,7 @@ mod tests {
                     })
                     .run(),
                 suffix_link: Link::default(),
-            },
+            }),
         };
 
         {
@@ -842,7 +889,9 @@ mod tests {
             .run();
 
         let mut expected_tree = SuffixTree{
-            root: Node {
+            word_count: 1,
+            end: END,
+            root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
@@ -891,7 +940,7 @@ mod tests {
                     })
                     .run(),
                 suffix_link: Link::default(),
-            },
+            }),
         };
 
         link_inner_nodes(&mut expected_tree.root.nodes, &[b'a'], &[b'b']);
@@ -945,7 +994,9 @@ mod tests {
         let expected_endptr = Rc::new(RefCell::new(data.len()));
 
         let mut expected_tree = SuffixTree{
-            root: Node {
+            word_count: 1,
+            end: END,
+            root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
@@ -1019,7 +1070,7 @@ mod tests {
                     })
                     .run(),
                 suffix_link: Link::default(),
-            },
+            }),
         };
 
         test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
@@ -1035,7 +1086,9 @@ mod tests {
         let expected_endptr = Rc::new(RefCell::new(data.len()));
 
         let mut expected_tree = SuffixTree{
-            root: Node {
+            word_count: 1,
+            end: END,
+            root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
@@ -1060,7 +1113,7 @@ mod tests {
                             }).run(),
                     }).run(),
                     suffix_link: Link::default(),
-            },
+            }),
         };
 
         test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
@@ -1075,7 +1128,9 @@ mod tests {
         let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let mut expected_tree = SuffixTree{
-            root: Node {
+            word_count: 1,
+            end: END,
+            root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
@@ -1132,7 +1187,7 @@ mod tests {
                     })
                     .run(),
                 suffix_link: Link::default(),
-            },
+            }),
         };
 
         link_inner_nodes(&mut expected_tree.root.nodes, &[b'a'], &[b'b']);
@@ -1213,7 +1268,9 @@ mod tests {
         let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let mut expected_tree = SuffixTree{
-            root: Node {
+            word_count: 1,
+            end: END,
+            root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
                 data,
                 from: 0,
@@ -1276,7 +1333,7 @@ mod tests {
                     })
                     .run(),
                 suffix_link: Link::default(),
-            },
+            }),
         };
 
         link_inner_nodes(&mut expected_tree.root.nodes, &[b'a', b'n'], &[b'n']);
@@ -1357,18 +1414,23 @@ mod tests {
 
             let tree = SuffixTree::new(LOREM_IPSUM, END);
             assert_eq!(tree.longest_repeat(), " Lorem Ipsum ");
-
         }
 
-        #[test]
-        fn longest_common_substring() {
-            let left = "qweasd";
-            let right = "qwerty";
-            let total = format!("{}{}{}", left, DELIMETER, right);
-            let tree = SuffixTree::new(&total, END);
-        }
+    }
+
+    #[ignore]
+    #[test]
+    fn longest_common_substring() {
+        let left = "qwa";
+        let right = "qwe";
+        let total = format!("{}{}{}", left, DELIMETER, right);// bug
+        let tree = SuffixTree::new(&total, END);
+        assert_eq!(tree.longest_common_substring(), "qw");
     }
 
     #[test]
-    fn experiment() {}
+    fn experiment() {
+        assert_eq!(b'1', 0x31);
+        assert_ne!(b'1', 0x01);
+    }
 }
