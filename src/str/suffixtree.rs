@@ -32,64 +32,63 @@ fn diprint(val: impl AsRef<str>) {
 static LOREM_IPSUM: &str = include_str!("lorem_ipsum.txt");
 
 struct SuffixTree<'a> {
-    root: Box<Node<'a>>,
+    data: Vec<&'a str>,
+    root: Box<Node>,
     word_count: usize,
     end: u8,
 }
 
-// pub struct Link<'a>(Cell<*mut Node<'a>>);
 #[derive(Clone, Copy)]
 #[cfg_attr(debug_assertions, derive(Debug))]
-pub struct Link<'a>(Option<NonNull<Node<'a>>>);
+pub struct Link(Option<NonNull<Node>>);
 
-impl<'a> From<&Node<'a>> for Link<'a> {
-    fn from(node: &Node<'a>) -> Self {
+impl From<&Node> for Link {
+    fn from(node: &Node) -> Self {
         Link(Some(NonNull::from(node)))
     }
 }
 
-impl<'a> Link<'a> {
-    fn set_suffix(&mut self, to: Link<'a>) {
+impl Link {
+    fn set_suffix(&mut self, to: Link) {
         if let Link(Some(mut node)) = self {
             unsafe { node.as_mut().suffix_link = to; }
         }
     }
 }
 
-impl<'a> Default for Link<'a> {
+impl Default for Link {
     fn default() -> Self {
         Link(None)
     }
 }
 
-struct Child<'a>(Option<Box<Node<'a>>>);
+struct Child(Option<Box<Node>>);
 
-impl<'a> From<Node<'a>> for Child<'a> {
-    fn from(n: Node<'a>) -> Self {
+impl From<Node> for Child {
+    fn from(n: Node) -> Self {
         Self(Some(Box::new(n)))
     }
 }
 
-struct Node<'a> {
-    data: &'a str,
+struct Node {
     from: usize,
     to: usize, // 0 for root, data.len() for a leaf
-    nodes: [Child<'a>; 256],
-    suffix_link: Link<'a>,
+    nodes: [Child; 256],
+    suffix_link: Link,
     markmask: u8, // 00 - root, 01 - appears in the first word only
 }
 
-impl<'a> Node<'a> {
-    fn new(data: &'a str, from: usize, to: usize) -> Self {
-        Self {data, from, to, nodes: make_children(), suffix_link: Link::default(), markmask: 1}
+impl Node {
+    fn new(from: usize, to: usize) -> Self {
+        Self {from, to, nodes: make_children(), suffix_link: Link::default(), markmask: 1}
     }
 
-    fn inner(data: &'a str, from: usize, to: usize) -> Self {
-        Self {data, from, to, nodes: make_children(), suffix_link: Link::default(), markmask: 1}
+    fn inner(from: usize, to: usize) -> Self {
+        Self {from, to, nodes: make_children(), suffix_link: Link::default(), markmask: 1}
     }
 
-    fn boxed(data: &'a str, from: usize, to: usize) -> Box<Self> {
-        Box::new(Self::new(data, from, to))
+    fn boxed(from: usize, to: usize) -> Box<Self> {
+        Box::new(Self::new(from, to))
     }
 
     fn len(&self) -> usize {
@@ -101,7 +100,7 @@ impl<'a> Node<'a> {
     }
 }
 
-fn make_children<'a>() -> [Child<'a>; 256] {
+fn make_children() -> [Child; 256] {
     unsafe {
         let mut res = mem::MaybeUninit::<[Child; 256]>::uninit();
         for i in 0 .. 256 {
@@ -114,23 +113,24 @@ fn make_children<'a>() -> [Child<'a>; 256] {
 }
 
 struct ActivePoint<'a> {
-    node: NonNull<Node<'a>>,
+    data: &'a str,
+    node: NonNull<Node>,
     edge: Option<u8>,
     length: usize,
-    root: Box<Node<'a>>,
+    root: Box<Node>,
     end: u8,
 }
 
 impl<'a> ActivePoint<'a> {
-    fn new(root: Box<Node<'a>>, end: u8) -> Self {
-        Self { node: NonNull::from(root.as_ref()), edge: None, length: 0, root, end }
+    fn new(data: &'a str, root: Box<Node>, end: u8) -> Self {
+        Self { data, node: NonNull::from(root.as_ref()), edge: None, length: 0, root, end }
     }
 
     /// Updates active length and links last node which was splitted or a new node created from.
     ///
     /// This is required for a case when the current was splitted before the `last_created_node`.
     /// See `post_suffix_linking` test.
-    fn update(&mut self, last_created_node: &mut Link<'a>) {
+    fn update(&mut self, last_created_node: &mut Link) {
         self.length += 1;
         let link = Link(Some(self.node));
         if !self.is_root(link) {
@@ -145,7 +145,7 @@ impl<'a> ActivePoint<'a> {
             return false;
         }
 
-        let data_bytes = self.root.data.as_bytes();
+        let data_bytes = self.data.as_bytes();
         let noderef = unsafe { self.node.as_ref() };
         noderef.nodes[key as usize].0.is_some()
     }
@@ -160,7 +160,7 @@ impl<'a> ActivePoint<'a> {
     fn is_prefix(&self, key: u8, for_letter: u8) -> bool {
         let noderef = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
-        self.root.data.as_bytes()[self.length + node.from] == for_letter
+        self.data.as_bytes()[self.length + node.from] == for_letter
     }
 
     /// Move further if the active length is in the end of the its edge. 
@@ -182,7 +182,7 @@ impl<'a> ActivePoint<'a> {
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
         if self.length >= node.len() {
             self.length -= node.len();
-            self.edge = Some(self.root.data.as_bytes()[node.to]);
+            self.edge = Some(self.data.as_bytes()[node.to]);
             self.node = NonNull::from(node.as_ref());
             true
         } else {
@@ -195,9 +195,9 @@ impl<'a> ActivePoint<'a> {
     ///
     /// This method is invoked when the current node is inner node or it's root. The new child node
     /// carries suffix starts from `current_end`
-    fn add_node(&mut self, at: u8, current_end: usize) -> &Node<'a> {
+    fn add_node(&mut self, at: u8, current_end: usize) -> &Node {
         let mut noderef = unsafe { self.node.as_mut() };
-        let node = Node::new(self.root.data, current_end, self.root.data.len());
+        let node = Node::new(current_end, self.data.len());
         noderef.nodes[at as usize] = node.into();
         noderef
     }
@@ -214,7 +214,7 @@ impl<'a> ActivePoint<'a> {
     ///
     /// Render assets/str/suffixtree/split_node.dot to get the picture. Gray nodes don't make
     /// any sense they are just for consistence. Black nodes are affected nodes.
-    fn split_node(&mut self, at: u8, for_letter: u8, current_end: usize) -> &Node<'a> {
+    fn split_node(&mut self, at: u8, for_letter: u8, current_end: usize) -> &Node {
         let at = at as usize;
         let old_node = {
             let mut noderef = unsafe { self.node.as_mut() };
@@ -227,15 +227,14 @@ impl<'a> ActivePoint<'a> {
         noderef.nodes[at].0.as_ref().unwrap()
     }
 
-    fn _split_node(&self, mut node: Box<Node<'a>>, for_letter: u8, current_end: usize) -> Node<'a> {
-        let input = self.root.data;
+    fn _split_node(&self, mut node: Box<Node>, for_letter: u8, current_end: usize) -> Node {
         let to = node.finished_at();
         debug_assert!(self.length < to);
         let divide_suffix_at = node.from + self.length;
-        let mut new_node = Node::inner(input, node.from, divide_suffix_at);
+        let mut new_node = Node::inner(node.from, divide_suffix_at);
         node.from = divide_suffix_at;
-        new_node.nodes[input.as_bytes()[divide_suffix_at] as usize] = Child(Some(node));
-        new_node.nodes[for_letter as usize] = Node::new(input, current_end, self.root.data.len()).into();
+        new_node.nodes[self.data.as_bytes()[divide_suffix_at] as usize] = Child(Some(node));
+        new_node.nodes[for_letter as usize] = Node::new(current_end, self.data.len()).into();
         new_node
     }
 
@@ -307,7 +306,7 @@ impl<'a> SuffixTree<'a> {
         let mut root = self.root;
         let word_count = self.word_count + 1;
         root.markmask = 0b11;
-        let mut active_point = ActivePoint::new(root, end);
+        let mut active_point = ActivePoint::new(input, root, end);
         let mut remainder = 0; // how many nodes should be inserted.
         let mut word_mark = 1u8; // bitmask indicates index of current word.
 
@@ -355,7 +354,10 @@ impl<'a> SuffixTree<'a> {
             }
         }
 
+        let mut data = self.data;
+        data.push(input);
         Self {
+            data,
             root: active_point.root,
             end: active_point.end,
             word_count,
@@ -363,9 +365,9 @@ impl<'a> SuffixTree<'a> {
     }
 
     fn new<T: AsRef<str> + ?Sized>(input: &'a T, end: u8) -> Self {
-        let mut root = Box::new(Node::new(input.as_ref(), 0, ROOT_TO));
+        let mut root = Box::new(Node::new(0, ROOT_TO));
         root.markmask = 0b11;
-        Self{root, end, word_count: 0}.extend(input.as_ref())
+        Self{root, end, word_count: 0, data: vec!()}.extend(input.as_ref())
     }
 
     fn find<Byte: Borrow<u8>>(&self, mut pattern_iter: impl Iterator<Item=Byte>) -> Option<usize> {
@@ -380,7 +382,7 @@ impl<'a> SuffixTree<'a> {
                 text_index = node.from;
             }
 
-            if self.root.data.as_bytes()[text_index] != *byte.borrow() {
+            if self.data[0].as_bytes()[text_index] != *byte.borrow() {
                 return None;
             }
 
@@ -392,7 +394,7 @@ impl<'a> SuffixTree<'a> {
     }
 
     fn is_leaf(&self, node: &Node) -> bool {
-        self.root.data.len() == node.to
+        self.data[0].len() == node.to
     }
 
     fn longest_repeat(&self) -> &'a str {
@@ -414,7 +416,7 @@ impl<'a> SuffixTree<'a> {
             children.for_each(|x| stack.push((x, len + x.len())));
         }
 
-        &self.root.data[ret_from .. ret_from + repeat_len]
+        &self.data[0][ret_from .. ret_from + repeat_len]
     }
 
     fn longest_common_substring(&self) -> &'a str {
@@ -437,15 +439,14 @@ impl<'a> SuffixTree<'a> {
             children.for_each(|x| stack.push((x, len + x.len())));
         }
 
-        &self.root.data[ret_from .. ret_from + repeat_len]
+        &self.data[0][ret_from .. ret_from + repeat_len]
     }
 }
 
 #[cfg(debug_assertions)]
-impl<'a> fmt::Debug for Node<'a> {
+impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Node")
-            .field("data", &self.data)
             .field("from", &self.from)
             .field("to", &self.to)
             .field("suffix_link", &self.suffix_link)
@@ -460,10 +461,9 @@ mod tests {
     use std::fmt;
     const DEFAULT_MARKS: u8 = 1u8;
 
-    fn clone_leaf<'a>(from: &Child<'a>) -> Child<'a> {
+    fn clone_leaf(from: &Child) -> Child {
         Child(from.0.as_ref().map(|from| {
             Box::new(Node {
-                data: from.data,
                 from: from.from,
                 to: from.to.clone(),
                 nodes: make_children(),
@@ -474,26 +474,26 @@ mod tests {
         
     }
 
-    struct NodesBuild<'a> {
-        nodes: [Child<'a>; 256],
+    struct NodesBuild {
+        nodes: [Child; 256],
     }
 
-    impl<'a> NodesBuild<'a> {
+    impl NodesBuild {
         fn new() -> Self {
             Self { nodes: make_children() }
         }
 
-        fn add(mut self, key: char, value: Node<'a>) -> Self {
+        fn add(mut self, key: char, value: Node) -> Self {
             self.nodes[key as usize] = value.into();
             self
         }
 
-        fn run(self) -> [Child<'a>; 256] {
+        fn run(self) -> [Child; 256] {
             self.nodes
         }
     }
 
-    impl<'a> PartialEq for Link<'a> {
+    impl PartialEq for Link {
         fn eq(&self, other: &Self) -> bool {
             if let (Some(left), Some(right)) = (self.0, other.0) {
                 unsafe {
@@ -505,17 +505,16 @@ mod tests {
         }
     }
 
-    impl<'a> PartialEq for Node<'a> {
+    impl PartialEq for Node {
         fn eq(&self, other: &Self) -> bool {
-            let res = self.data == other.data;
-            let res = res && self.from == other.from;
+            let res = self.from == other.from;
             let res = res && self.to == other.to;
             res && self.suffix_link == other.suffix_link
         }
     }
 
-    impl<'a> From<&Child<'a>> for Link<'a> {
-        fn from(ch: &Child<'a>) -> Self {
+    impl From<&Child> for Link {
+        fn from(ch: &Child) -> Self {
             ch.0.as_ref().unwrap().as_ref().into()
         }
     }
@@ -523,7 +522,6 @@ mod tests {
     fn end_node(data: &str, expected_endptr: Rc<RefCell<usize>>) -> Node {
         Node {
             markmask: DEFAULT_MARKS,
-            data,
             from: data.len(),
             to: data.len(),
             suffix_link: Link::default(),
@@ -538,12 +536,12 @@ mod tests {
         }
     }
 
-    fn select_ref<'b, 'a: 'b>(nodes: &'b [Child<'a>; 256], path: &[u8]) -> &'b Node<'a> {
+    fn select_ref<'b, 'a: 'b>(nodes: &'b [Child; 256], path: &[u8]) -> &'b Node {
         let ret = select(&nodes, path);
         unsafe { mem::transmute(ret) }
     }
 
-    fn select<'b, 'a: 'b>(nodes: &'b [Child<'a>; 256], path: &[u8]) -> *const Node<'a> {
+    fn select<'b, 'a: 'b>(nodes: &'b [Child; 256], path: &[u8]) -> *const Node {
         let mut count = 0;
         let mut nodes = nodes;
         loop {
@@ -577,18 +575,17 @@ mod tests {
         let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let expected_tree = SuffixTree{
+            data: vec![data],
             word_count: 1,
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 0,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -596,7 +593,6 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 1,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -604,7 +600,6 @@ mod tests {
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 2,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -633,9 +628,9 @@ mod tests {
 
         let input = "ababx";
 
-        let mut root = Box::new(Node::new(input.as_ref(), 0, ROOT_TO));
+        let mut root = Box::new(Node::new(0, ROOT_TO));
         root.markmask = 0b11;
-        let mut active_point = ActivePoint::new(root, END);
+        let mut active_point = ActivePoint::new(input, root, END);
 
         {
             let key = b'a';
@@ -724,7 +719,6 @@ mod tests {
         let anode_nodes = NodesBuild::new()
             .add('c', Node{
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 2,
                 to: data.len(),
                 suffix_link: Link::default(),
@@ -732,7 +726,6 @@ mod tests {
             })
             .add('x', Node{
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 5, // TODO: what's a number correct (by design)????
                 to: data.len(),
                 suffix_link: Link::default(),
@@ -744,18 +737,17 @@ mod tests {
         (0 .. 256).for_each(|i| bnode_nodes[i] = clone_leaf(&anode_nodes[i]));
 
         let mut expected_tree = SuffixTree{
+            data: vec![data],
             word_count: 1,
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 0,
                         to: 2,
                         suffix_link: Link::default(),
@@ -763,7 +755,6 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 1,
                         to: 2,
                         suffix_link: Link::default(),
@@ -771,7 +762,6 @@ mod tests {
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 2,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -779,7 +769,6 @@ mod tests {
                     })
                     .add('x', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 5,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -828,7 +817,6 @@ mod tests {
         let cnode_nodes = NodesBuild::new()
             .add('a', Node{
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 3,
                 to: data.len(),
                 suffix_link: Link::default(),
@@ -836,7 +824,6 @@ mod tests {
             })
             .add('d', Node{
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 9,
                 to: data.len(),
                 suffix_link: Link::default(),
@@ -853,7 +840,6 @@ mod tests {
         let bnode_nodes = NodesBuild::new()
             .add('c', Node{
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 2,
                 to: 3,
                 suffix_link: Link::default(),
@@ -861,7 +847,6 @@ mod tests {
             })
             .add('x', Node{
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 5, // TODO: what's a number correct (by design)????
                 to: data.len(),
                 suffix_link: Link::default(),
@@ -872,7 +857,6 @@ mod tests {
         let anode_nodes = NodesBuild::new()
             .add('c', Node{
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 2,
                 to: 3,
                 suffix_link: Link::default(),
@@ -880,7 +864,6 @@ mod tests {
             })
             .add('x', Node{
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 5, // TODO: what's a number correct (by design)????
                 to: data.len(),
                 suffix_link: Link::default(),
@@ -889,18 +872,17 @@ mod tests {
             .run();
 
         let mut expected_tree = SuffixTree{
+            data: vec![data],
             word_count: 1,
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 0,
                         to: 2,
                         suffix_link: Link::default(),
@@ -908,7 +890,6 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 1,
                         to: 2,
                         suffix_link: Link::default(),
@@ -916,7 +897,6 @@ mod tests {
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 2,
                         to: 3,
                         suffix_link: Link::default(),
@@ -924,7 +904,6 @@ mod tests {
                     })
                     .add('d', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 9,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -932,7 +911,6 @@ mod tests {
                     })
                     .add('x', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 5,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -994,25 +972,23 @@ mod tests {
         let expected_endptr = Rc::new(RefCell::new(data.len()));
 
         let mut expected_tree = SuffixTree{
+            data: vec![data],
             word_count: 1,
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 0,
                         to: 1,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('k', Node{
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 6,
                                 to: data.len(),
                                 nodes: make_children(),
@@ -1020,7 +996,6 @@ mod tests {
                             })
                             .add('d', Node{
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 4,
                                 to: data.len(),
                                 nodes: make_children(),
@@ -1028,7 +1003,6 @@ mod tests {
                             })
                             .add('b', Node{
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 1,
                                 to: data.len(),
                                 nodes: make_children(),
@@ -1038,7 +1012,6 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 1,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -1046,7 +1019,6 @@ mod tests {
                     })
                     .add('c', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 2,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -1054,7 +1026,6 @@ mod tests {
                     })
                     .add('d', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 4,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -1062,7 +1033,6 @@ mod tests {
                     })
                     .add('k', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 6,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -1086,18 +1056,17 @@ mod tests {
         let expected_endptr = Rc::new(RefCell::new(data.len()));
 
         let mut expected_tree = SuffixTree{
+            data: vec![data],
             word_count: 1,
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('d', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 0,
                         to: 1,
                         suffix_link: Link::default(),
@@ -1105,7 +1074,6 @@ mod tests {
                             .add(END as char, end_node(data, expected_endptr.clone()))
                             .add('d', Node {
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 1,
                                 to: data.len(),
                                 suffix_link: Link::default(),
@@ -1128,25 +1096,23 @@ mod tests {
         let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let mut expected_tree = SuffixTree{
+            data: vec![data],
             word_count: 1,
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 0,
                         to: 2,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 2,
                                 to: data.len(),
                                 suffix_link: Link::default(),
@@ -1154,7 +1120,6 @@ mod tests {
                             })
                             .add(END as char, Node{
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 4,
                                 to: data.len(),
                                 suffix_link: Link::default(),
@@ -1163,14 +1128,12 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 1,
                         to: 2,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('a', Node{
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 2,
                                 to: data.len(),
                                 suffix_link: Link::default(),
@@ -1178,7 +1141,6 @@ mod tests {
                             })
                             .add(END as char, Node{
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 4,
                                 to: data.len(),
                                 suffix_link: Link::default(),
@@ -1268,32 +1230,29 @@ mod tests {
         let tree = SuffixTree::new(data, END);
         let expected_endptr = Rc::new(RefCell::new(data.len()));
         let mut expected_tree = SuffixTree{
+            data: vec![data],
             word_count: 1,
             end: END,
             root: Box::new(Node {
                 markmask: DEFAULT_MARKS,
-                data,
                 from: 0,
                 to: ROOT_TO,
                 nodes: NodesBuild::new()
                     .add(END as char, end_node(data, expected_endptr.clone()))
                     .add('a', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 1,
                         to: 2,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('n', Node{
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 2,
                                 to: 4,
                                 suffix_link: Link::default(),
                                 nodes: NodesBuild::new()
                                     .add('n', Node {
                                         markmask: DEFAULT_MARKS,
-                                        data,
                                         from: 4,
                                         to: data.len(),
                                         suffix_link: Link::default(),
@@ -1307,7 +1266,6 @@ mod tests {
                     })
                     .add('b', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 0,
                         to: data.len(),
                         suffix_link: Link::default(),
@@ -1315,14 +1273,12 @@ mod tests {
                     })
                     .add('n', Node{
                         markmask: DEFAULT_MARKS,
-                        data,
                         from: 2,
                         to: 4,
                         suffix_link: Link::default(),
                         nodes: NodesBuild::new()
                             .add('n', Node{
                                 markmask: DEFAULT_MARKS,
-                                data,
                                 from: 4,
                                 to: data.len(),
                                 suffix_link: Link::default(),
