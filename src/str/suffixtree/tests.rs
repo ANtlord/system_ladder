@@ -168,7 +168,7 @@ fn memcrash() {
         let key = b'a';
         let byte = &key;
         current_end += 1;
-        active_point.edge = Some(*byte);
+        active_point.edge = *byte;
         let mut last_created_node = Link::default();
         let node: &Node = active_point.add_node(current_end);
         let inserted_node_link = node.into();
@@ -181,7 +181,7 @@ fn memcrash() {
         let mut last_created_node = Link::default();
         let key = b'b';
         let byte = &key;
-        active_point.edge = Some(*byte);
+        active_point.edge = *byte;
         let node: &Node = active_point.add_node(current_end);
         let inserted_node_link = node.into();
         last_created_node.set_suffix(inserted_node_link);
@@ -204,17 +204,17 @@ fn memcrash() {
         let mut last_created_node = Link::default();
         current_end += 1;
         let ref byte = b'a';
-        active_point.edge = Some(*byte);
+        active_point.edge = *byte;
         let node = active_point.split_node(*byte, current_end);
         let inserted_node_link = node.into();
         last_created_node.set_suffix(inserted_node_link);
         last_created_node = inserted_node_link;
 
         active_point.length -= 1;
-        active_point.edge = Some(b'a'); // It's not designed by Ukknen algorithm but allows to corrupt memory
+        active_point.edge = b'a'; // It's not designed by Ukknen algorithm but allows to corrupt memory
 
         let ref byte = b'a';
-        active_point.edge = Some(*byte);
+        active_point.edge = *byte;
         let node = active_point.split_node(*byte, current_end);
         let inserted_node_link: Link = node.into();
         last_created_node.set_suffix(inserted_node_link);

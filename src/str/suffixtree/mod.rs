@@ -109,7 +109,7 @@ fn make_children() -> [Child; 256] {
 struct ActivePoint<'a> {
     data: &'a str,
     node: NonNull<Node>,
-    edge: Option<u8>,
+    edge: u8,
     length: usize,
     root: Box<Node>,
     end: u8,
@@ -118,7 +118,7 @@ struct ActivePoint<'a> {
 
 impl<'a> ActivePoint<'a> {
     fn new(data: &'a str, root: Box<Node>, end: u8, word_count: usize) -> Self {
-        Self { data, node: NonNull::from(root.as_ref()), edge: None, length: 0, root, end, word_count }
+        Self { data, node: NonNull::from(root.as_ref()), edge: 0, length: 0, root, end, word_count }
     }
 
     /// Updates active length and links last node which was splitted or a new node created from.
@@ -135,7 +135,7 @@ impl<'a> ActivePoint<'a> {
 
     /// Checks if the current node has a child at `key`.
     fn has_child(&self) -> bool {
-        let key = self.edge.unwrap();
+        let key = self.edge;
         // probable redudant check.
         if key == self.end {
             return false;
@@ -154,7 +154,7 @@ impl<'a> ActivePoint<'a> {
     }
 
     fn is_prefix(&self, for_letter: u8) -> bool {
-        let key = self.edge.unwrap();
+        let key = self.edge;
         let noderef = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
         self.data.as_bytes()[self.length + node.from(self.word_count - 1)] == for_letter
@@ -174,16 +174,15 @@ impl<'a> ActivePoint<'a> {
     /// Render assets/str/suffixtree/split_node.dot. It shows how moving works and the reason why
     /// it's needed.
     fn try_follow_edge(&mut self) -> bool {
-        let key = self.edge.take().unwrap();
+        let key = self.edge;
         let noderef: &Node = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
         if self.length >= node.len(self.word_count - 1) {
             self.length -= node.len(self.word_count - 1);
-            self.edge = Some(self.data.as_bytes()[node.to(self.word_count - 1)]);
+            self.edge = self.data.as_bytes()[node.to(self.word_count - 1)];
             self.node = NonNull::from(node.as_ref());
             true
         } else {
-            self.edge = Some(key);
             false
         }
     }
@@ -193,7 +192,7 @@ impl<'a> ActivePoint<'a> {
     /// This method is invoked when the current node is inner node or it's root. The new child node
     /// carries suffix starts from `current_end`
     fn add_node(&mut self, current_end: usize) -> &Node {
-        let at = self.edge.unwrap();
+        let at = self.edge;
         let mut noderef = unsafe { self.node.as_mut() };
         let node = Node::new(current_end, self.data.len());
         noderef.nodes[at as usize] = node.into();
@@ -213,7 +212,7 @@ impl<'a> ActivePoint<'a> {
     /// Render assets/str/suffixtree/split_node.dot to get the picture. Gray nodes don't make
     /// any sense they are just for consistence. Black nodes are affected nodes.
     fn split_node(&mut self, for_letter: u8, current_end: usize) -> &Node {
-        let at = self.edge.unwrap() as usize;
+        let at = self.edge as usize;
         let old_node = {
             let mut noderef = unsafe { self.node.as_mut() };
             noderef.nodes[at].0.take().unwrap()
@@ -314,7 +313,7 @@ impl<'a> SuffixTree<'a> {
             while remainder > 0 {
                 debug_assert!(active_point.length <= remainder);
                 if active_point.length == 0 {
-                    active_point.edge = Some(*byte);
+                    active_point.edge = *byte;
                 }
 
                 let inserted_node_link: Link = if !active_point.has_child() {
@@ -337,11 +336,11 @@ impl<'a> SuffixTree<'a> {
                 if active_point.is_at_root() && active_point.length > 0 { // r1
                     active_point.length -= 1;
                     let next_byte_position_to_insert = i - remainder + 1;
-                    active_point.edge = Some(if input.len() == next_byte_position_to_insert {
+                    active_point.edge = if input.len() == next_byte_position_to_insert {
                         end
                     } else {
                         input.as_bytes()[next_byte_position_to_insert]
-                    });
+                    };
 
                 } else { // r3
                     active_point.follow_suffix();
@@ -429,7 +428,6 @@ impl<'a> SuffixTree<'a> {
         stack.push((&self.root, 0));
         let (mut ret_from, mut repeat_len) = (0, 0);
         while let Some((node, len)) = stack.pop() {
-            dbg!(node);
             if node.markmask != 0b11u8 {
                 let total_len = len - node.len(0);
                 if total_len > repeat_len {
