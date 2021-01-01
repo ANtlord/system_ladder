@@ -65,7 +65,7 @@ impl From<&Child> for Link {
     }
 }
 
-fn end_node(data: &str, expected_endptr: Rc<RefCell<usize>>) -> Node {
+fn end_node(data: &str) -> Node {
     Node {
         markmask: DEFAULT_MARKS,
         views: vec![Some((data.len(), data.len()))],
@@ -127,7 +127,7 @@ fn no_repeats() {
             markmask: DEFAULT_MARKS,
             views: vec![Some((0, ROOT_TO))],
             nodes: NodesBuild::new()
-                .add(END as char, end_node(data, expected_endptr.clone()))
+                .add(END as char, end_node(data))
                 .add('a', Node{
                     markmask: DEFAULT_MARKS,
                     views: vec![Some((0, data.len()))],
@@ -160,7 +160,7 @@ fn memcrash() {
     let mut current_end = 0usize;
     let input = "ababx";
 
-    let mut root = Box::new(Node::new(0, ROOT_TO));
+    let mut root = Box::new(Node::new(0, 0, ROOT_TO));
     root.markmask = 0b11;
     let mut active_point = ActivePoint::new(input, root, END, 1);
 
@@ -270,7 +270,7 @@ fn two_repeats() {
             markmask: DEFAULT_MARKS,
             views: vec![Some((0, ROOT_TO))],
             nodes: NodesBuild::new()
-                .add(END as char, end_node(data, expected_endptr.clone()))
+                .add(END as char, end_node(data))
                 .add('a', Node{
                     markmask: DEFAULT_MARKS,
                     views: vec![Some((0, 2))],
@@ -394,7 +394,7 @@ fn three_repeats() {
             markmask: DEFAULT_MARKS,
             views: vec![Some((0, ROOT_TO))],
             nodes: NodesBuild::new()
-                .add(END as char, end_node(data, expected_endptr.clone()))
+                .add(END as char, end_node(data))
                 .add('a', Node{
                     markmask: DEFAULT_MARKS,
                     views: vec![Some((0, 2))],
@@ -488,7 +488,7 @@ fn inner_node_extend() {
             markmask: DEFAULT_MARKS,
             views: vec![Some((0, ROOT_TO))],
             nodes: NodesBuild::new()
-                .add(END as char, end_node(data, expected_endptr.clone()))
+                .add(END as char, end_node(data))
                 .add('a', Node{
                     markmask: DEFAULT_MARKS,
                     views: vec![Some((0, 1))],
@@ -563,13 +563,13 @@ fn pair_of_letters() {
             markmask: DEFAULT_MARKS,
             views: vec![Some((0, ROOT_TO))],
             nodes: NodesBuild::new()
-                .add(END as char, end_node(data, expected_endptr.clone()))
+                .add(END as char, end_node(data))
                 .add('d', Node{
                     markmask: DEFAULT_MARKS,
                     views: vec![Some((0, 1))],
                     suffix_link: Link::default(),
                     nodes: NodesBuild::new()
-                        .add(END as char, end_node(data, expected_endptr.clone()))
+                        .add(END as char, end_node(data))
                         .add('d', Node {
                             markmask: DEFAULT_MARKS,
                             views: vec![Some((1, data.len()))],
@@ -600,7 +600,7 @@ fn undefined_repeat() {
             markmask: DEFAULT_MARKS,
             views: vec![Some((0, ROOT_TO))],
             nodes: NodesBuild::new()
-                .add(END as char, end_node(data, expected_endptr.clone()))
+                .add(END as char, end_node(data))
                 .add('a', Node{
                     markmask: DEFAULT_MARKS,
                     views: vec![Some((0, 2))],
@@ -727,7 +727,7 @@ fn inner_node_split() {
             markmask: DEFAULT_MARKS,
             views: vec![Some((0, ROOT_TO))],
             nodes: NodesBuild::new()
-                .add(END as char, end_node(data, expected_endptr.clone()))
+                .add(END as char, end_node(data))
                 .add('a', Node{
                     markmask: DEFAULT_MARKS,
                     views: vec![Some((1, 2))],
@@ -744,10 +744,10 @@ fn inner_node_split() {
                                     suffix_link: Link::default(),
                                     nodes: make_children(),
                                 })
-                            .add(END as char, end_node(data, expected_endptr.clone()))
+                            .add(END as char, end_node(data))
                                 .run(),
                         })
-                    .add(END as char, end_node(data, expected_endptr.clone()))
+                    .add(END as char, end_node(data))
                         .run(),
                 })
             .add('b', Node{
@@ -767,7 +767,7 @@ fn inner_node_split() {
                         suffix_link: Link::default(),
                         nodes: make_children(),
                     })
-                .add(END as char, end_node(data, expected_endptr.clone()))
+                .add(END as char, end_node(data))
                     .run(),
             })
             .run(),
@@ -798,6 +798,119 @@ fn inner_node_split() {
         &select_ref(&expected_tree.root.nodes, &[b'n', b'n']).nodes,
     );
 
+}
+
+mod two_words {
+    use super::*;
+
+    #[test]
+    fn try_follow_edge_simple() {
+        let data = "abc";
+        let tree = SuffixTree::new(data, END);
+        let tree = tree.extend("bc");
+    }
+
+    #[test]
+    fn try_follow_edge() {
+        let data = "dd";
+        let tree = SuffixTree::new(data, END);
+        println!("======================================================================> first success");
+        let tree = tree.extend(data);
+        let expected_endptr = Rc::new(RefCell::new(data.len()));
+        let expected_endptr = Rc::new(RefCell::new(data.len()));
+
+        let mut expected_tree = SuffixTree{
+            data: vec![data],
+            word_count: 1,
+            end: END,
+            root: Box::new(Node {
+                markmask: DEFAULT_MARKS,
+                views: vec![Some((0, ROOT_TO))],
+                nodes: NodesBuild::new()
+                    .add(END as char, Node {
+                        markmask: DEFAULT_MARKS,
+                        views: vec![None, Some((data.len(), data.len()))],
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new().run(),
+                    })
+                    .add('d', Node{
+                        markmask: DEFAULT_MARKS,
+                        views: vec![Some((0, 1)), Some((0, 1))],
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new()
+                            .add(END as char, end_node(data))
+                            .add('d', Node {
+                                markmask: DEFAULT_MARKS,
+                                views: vec![Some((1, data.len())), Some((1, data.len()))],
+                                suffix_link: Link::default(),
+                                nodes: make_children(),
+                            }).run(),
+                    }).run(),
+                    suffix_link: Link::default(),
+            }),
+        };
+
+        test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
+        test_nodes(
+            &select_ref(&tree.root.nodes, &[b'd']).nodes,
+            &select_ref(&expected_tree.root.nodes, &[b'd']).nodes,
+        );
+    }
+
+    #[ignore]
+    #[test]
+    fn split_node() {
+        let data = "abc";
+        let tree = SuffixTree::new(data, END);
+        println!("======================================================================> first success");
+        let tree = tree.extend("abd");
+
+        let expected_endptr = Rc::new(RefCell::new(data.len()));
+        let expected_tree = SuffixTree{
+            data: vec![data],
+            word_count: 1,
+            end: END,
+            root: Box::new(Node {
+                markmask: DEFAULT_MARKS,
+                views: vec![Some((0, ROOT_TO))],
+                nodes: NodesBuild::new()
+                    .add(END as char, Node {
+                        markmask: DEFAULT_MARKS,
+                        views: vec![None, Some((data.len(), data.len()))],
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new().run(),
+                    })
+                    .add('a', Node{
+                        markmask: DEFAULT_MARKS,
+                        views: vec![Some((0, 2)), Some((0, 2))],
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new().run(),
+                    })
+                    .add('b', Node{
+                        markmask: DEFAULT_MARKS,
+                        views: vec![Some((1, 2)), Some((1, 2))],
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new().run(),
+                    })
+                    .add('c', Node{
+                        markmask: DEFAULT_MARKS,
+                        views: vec![Some((2, data.len())), None],
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new().run(),
+                    })
+                    .add('d', Node{
+                        markmask: DEFAULT_MARKS,
+                        views: vec![None, Some((2, data.len()))],
+                        suffix_link: Link::default(),
+                        nodes: NodesBuild::new().run(),
+                    })
+                    .run(),
+                suffix_link: Link::default(),
+            }),
+        };
+
+        test_nodes(&tree.root.nodes, &expected_tree.root.nodes);
+    }
 }
 
 mod find {
@@ -873,8 +986,11 @@ fn longest_common_substring() {
     assert_eq!(tree.longest_common_substring(), "qw");
 }
 
+use std::mem::size_of_val;
+
 #[test]
 fn experiment() {
-    assert_eq!(b'1', 0x31);
-    assert_ne!(b'1', 0x01);
+    // let data = "aba";
+    // let tree = SuffixTree::new(data, END);
+    // let expected_endptr = Rc::new(RefCell::new(data.len()));
 }

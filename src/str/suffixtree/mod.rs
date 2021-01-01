@@ -5,8 +5,10 @@ use std::ptr::NonNull;
 use std::marker::Copy;
 use std::mem;
 use std::fmt;
+use std::iter::repeat;
 
 use crate::container::Stack;
+use crate::tprintln;
 
 #[cfg(test)]
 mod tests;
@@ -68,21 +70,23 @@ struct Node {
 }
 
 impl Node {
-    fn new(from: usize, to: usize) -> Self {
+    fn new(at: usize, from: usize, to: usize) -> Self {
+        let mut views = vec![None; at + 1];
+        views[at] = Some((from, to));
         Self {
-            views: vec![Some((from, to))],
+            views,
             nodes: make_children(),
             suffix_link: Link::default(),
             markmask: 1,
         }
     }
 
-    fn boxed(from: usize, to: usize) -> Box<Self> {
-        Box::new(Self::new(from, to))
-    }
-
     fn len(&self, at: usize) -> usize {
         self.to(at) - self.from(at)
+    }
+
+    fn find_len(&self) -> Option<usize> {
+        self.views.iter().find_map(|x| x.map(|(x, y)| y - x))
     }
 
     fn from(&self, at: usize) -> usize {
@@ -91,6 +95,10 @@ impl Node {
 
     fn to(&self, at: usize) -> usize {
         self.views[at].unwrap().1
+    }
+
+    fn shift_from(&mut self, by: usize) {
+        self.views = self.views.iter().map(|x| x.map(|(x, y)| (x + by, y))).collect()
     }
 }
 
@@ -154,6 +162,10 @@ impl<'a> ActivePoint<'a> {
     }
 
     fn is_prefix(&self, for_letter: u8) -> bool {
+        if for_letter == self.end {
+            return false;
+        }
+
         let key = self.edge;
         let noderef = unsafe { self.node.as_ref() };
         let node = noderef.nodes[key as usize].0.as_ref().unwrap();
@@ -173,18 +185,31 @@ impl<'a> ActivePoint<'a> {
     ///
     /// Render assets/str/suffixtree/split_node.dot. It shows how moving works and the reason why
     /// it's needed.
-    fn try_follow_edge(&mut self) -> bool {
+    fn try_follow_edge(&mut self, current_end: usize) -> bool {
         let key = self.edge;
-        let noderef: &Node = unsafe { self.node.as_ref() };
-        let node = noderef.nodes[key as usize].0.as_ref().unwrap();
-        if self.length >= node.len(self.word_count - 1) {
-            self.length -= node.len(self.word_count - 1);
-            self.edge = self.data.as_bytes()[node.to(self.word_count - 1)];
-            self.node = NonNull::from(node.as_ref());
-            true
-        } else {
-            false
+        let noderef = unsafe { self.node.as_mut() };
+        let next_node: &mut Node = noderef.nodes[key as usize].0.as_mut().unwrap();
+        let n = self.word_count - next_node.views.len();
+        next_node.views.extend(repeat(None).take(n));
+        let next_node_len = next_node.find_len().unwrap();
+        next_node.views[self.word_count - 1].get_or_insert((
+            current_end, current_end + next_node_len,
+        ));
+
+        if self.length < next_node.len(self.word_count - 1) {
+            return false;
         }
+
+        self.length -= next_node.len(self.word_count - 1);
+        // for case when we insert one more word and it completely matches a one before
+        self.edge = match self.length {
+            0 => 0,
+            _ => self.data.as_bytes()[next_node.to(self.word_count - 1)]
+        };
+
+        self.node = NonNull::from(next_node);
+
+        true
     }
 
     /// Adds a child node to the current one at `at`.
@@ -194,7 +219,7 @@ impl<'a> ActivePoint<'a> {
     fn add_node(&mut self, current_end: usize) -> &Node {
         let at = self.edge;
         let mut noderef = unsafe { self.node.as_mut() };
-        let node = Node::new(current_end, self.data.len());
+        let node = Node::new(self.word_count - 1, current_end, self.data.len());
         noderef.nodes[at as usize] = node.into();
         noderef
     }
@@ -202,10 +227,10 @@ impl<'a> ActivePoint<'a> {
     /// Splits a child node at `at` of the current node.
     ///
     /// It replaces the old child node at `at` by the new one. The new child node carries suffix from the
-    /// begginning of the old child node consists of as much letter as designed in `self.length`.
+    /// begginning of the old child node consists of as much letters as `self.length` equals to.
     ///
     /// The new child node has two child nodes (which are grandchild nodes for the current one).
-    /// The first one carries suffix from end of the new child node to the end of the old child
+    /// The first one carries suffix from the end of the new child node to the end of the old child
     /// node. The suffix can the rest of the word.
     /// The second one carries suffix from the current handled letter to the end of the word.
     ///
@@ -229,10 +254,11 @@ impl<'a> ActivePoint<'a> {
         debug_assert!(self.length < to);
         let from = node.from(self.word_count - 1);
         let divide_suffix_at = from + self.length;
-        let mut new_node = Node::new(from, divide_suffix_at);
-        node.views[self.word_count - 1] = Some((divide_suffix_at, node.to(self.word_count - 1)));
+        let mut new_node = Node::new(self.word_count - 1, from, divide_suffix_at);
+        // node.views[self.word_count - 1] = Some((divide_suffix_at, node.to(self.word_count - 1)));
+        node.shift_from(self.length);
         new_node.nodes[self.data.as_bytes()[divide_suffix_at] as usize] = Child(Some(node));
-        new_node.nodes[for_letter as usize] = Node::new(current_end, self.data.len()).into();
+        new_node.nodes[for_letter as usize] = Node::new(self.word_count - 1, current_end, self.data.len()).into();
         new_node
     }
 
@@ -307,22 +333,24 @@ impl<'a> SuffixTree<'a> {
         let mut active_point = ActivePoint::new(input, root, end, word_count);
         let mut remainder = 0; // how many nodes should be inserted.
 
-        'outer: for (i, byte) in input.as_bytes().iter().chain(&[end]).enumerate() {
+        'phase: for (i, byte) in input.as_bytes().iter().chain(&[end]).enumerate() {
             let mut last_created_node = Link::default();
             remainder += 1;
             while remainder > 0 {
+                dbg!(remainder, i, active_point.length);
                 debug_assert!(active_point.length <= remainder);
                 if active_point.length == 0 {
                     active_point.edge = *byte;
                 }
 
-                let inserted_node_link: Link = if !active_point.has_child() {
+                let inserted_node_link: Link = if !dbg!(active_point.has_child()) {
                     active_point.add_node(i).into()
-                } else if active_point.try_follow_edge() {
+                } else if active_point.try_follow_edge(i) {
+                    tprintln!("try_follow_edge");
                     continue;
-                } else if active_point.is_prefix(*byte) {
+                } else if dbg!(active_point.is_prefix(*byte)) {
                     active_point.update(&mut last_created_node);
-                    continue 'outer;
+                    continue 'phase;
                 } else {
                     active_point.split_node(*byte, i).into()
                 };
@@ -359,7 +387,7 @@ impl<'a> SuffixTree<'a> {
     }
 
     fn new<T: AsRef<str> + ?Sized>(input: &'a T, end: u8) -> Self {
-        let mut root = Box::new(Node::new(0, ROOT_TO));
+        let mut root = Box::new(Node::new(0, 0, ROOT_TO));
         root.markmask = 0b11;
         Self{root, end, word_count: 0, data: vec!()}.extend(input.as_ref())
     }
@@ -456,4 +484,3 @@ impl fmt::Debug for Node {
             .finish()
     }
 }
-
