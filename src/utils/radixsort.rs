@@ -22,8 +22,8 @@ fn lsd<T: AsRef<[u8]> + AsMut<[u8]>>(arr: &mut [T]) {
     for i in (0 .. word_len).rev() {
         let mut count = [0usize; RADIX + 1];
         let column = arr.iter().map(|x| x.as_ref()[i]);
-        column.for_each(|x| count[x as usize + 1] += 1);
-        (0 .. count.len() - 1).for_each(|i| count[i + 1] += count[i]);
+        column.for_each(|x| count[x as usize + 1] += 1); // count equal letters
+        (0 .. count.len() - 1).for_each(|i| count[i + 1] += count[i]); // compute indexes in the new array.
 
         arr.iter().for_each(|word| {
             let word = word.as_ref();
@@ -34,6 +34,54 @@ fn lsd<T: AsRef<[u8]> + AsMut<[u8]>>(arr: &mut [T]) {
 
         (0 .. arr.len()).for_each(|i| arr[i].as_mut().clone_from_slice(aux[i].as_slice()));
     }
+}
+
+fn msd(input: &mut [String]) {
+    let mut aux: Vec<String> = vec![String::default(); input.len()];
+    _msd(input, &mut aux, 0);
+}
+
+fn byte_at(word: &[u8], position: usize) -> usize {
+    match word.get(position) {
+        Some(x) => *x as usize + 2,
+        None => 1,
+    }
+}
+
+fn printnonzero(arr: &[usize]) {
+    (0 .. arr.len()).for_each(|x| {
+        if arr[x] != 0 {
+            println!("arr[{}] = {}", x, arr[x]);
+        }
+    });
+}
+
+fn _msd(input: &mut [String], aux: &mut [String], d: usize) {
+    debug_assert!(d < 10);
+    dbg!(d);
+    if input.len() < 2 {
+        return
+    }
+
+    let radix = RADIX + 3;
+    let mut count = vec![0usize; radix];
+    input.iter().for_each(|word| count[byte_at(word.as_ref(), d)] += 1);
+
+    (0 .. count.len() - 1).for_each(|i| count[i + 1] += count[i]); // compute indexes in the new array.
+    input.iter_mut().for_each(|word| {
+        let index = byte_at(word.as_ref(), d) - 1;
+        aux[count[index]] = word.split_off(0);
+        count[index] += 1;
+    });
+
+    (0 .. input.len()).for_each(|i| {
+        input[i] = aux[i].split_off(0);
+    });
+
+    (0 .. RADIX + 1).for_each(|r| {
+        let input = &mut input[count[r] .. count[r + 1]];
+        _msd(input, aux, d + 1);
+    })
 }
 
 #[cfg(test)]
@@ -67,6 +115,41 @@ mod tests {
                 b"Bell".to_vec(),
                 b"Jack".to_vec(),
                 b"John".to_vec(),
+            ]);
+        }
+    }
+
+    mod msd {
+        use super::*;
+
+        #[test]
+        fn basic() {
+            let mut input = vec![
+                "John".to_owned(),
+                "Jack".to_owned(),
+                "Alex".to_owned(),
+                "Bell".to_owned(),
+            ];
+
+            msd(&mut input);
+            assert_eq!(input, vec![
+                "Alex".to_owned(),
+                "Bell".to_owned(),
+                "Jack".to_owned(),
+                "John".to_owned(),
+            ]);
+
+            let mut input = vec![
+                "cba".to_owned(),
+                "ba".to_owned(),
+                "a".to_owned(),
+            ];
+
+            msd(&mut input);
+            assert_eq!(input, vec![
+                "a".to_owned(),
+                "ba".to_owned(),
+                "cba".to_owned(),
             ]);
         }
     }
