@@ -57,8 +57,6 @@ fn printnonzero(arr: &[usize]) {
 }
 
 fn _msd(input: &mut [String], aux: &mut [String], d: usize) {
-    debug_assert!(d < 10);
-    dbg!(d);
     if input.len() < 2 {
         return
     }
