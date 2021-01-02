@@ -36,8 +36,8 @@ fn lsd<T: AsRef<[u8]> + AsMut<[u8]>>(arr: &mut [T]) {
     }
 }
 
-fn msd(input: &mut [&str]) {
-    let mut aux: Vec<&str> = vec![""; input.len()];
+pub fn msd<T: AsRef<[u8]> + Clone>(input: &mut [T]) {
+    let mut aux: Vec<T> = input.iter().cloned().collect();
     _msd(input, &mut aux, 0);
 }
 
@@ -48,15 +48,7 @@ fn byte_at(word: &[u8], position: usize) -> usize {
     }
 }
 
-fn printnonzero(arr: &[usize]) {
-    (0 .. arr.len()).for_each(|x| {
-        if arr[x] != 0 {
-            println!("arr[{}] = {}", x, arr[x]);
-        }
-    });
-}
-
-fn _msd<'a>(input: &mut [&'a str], aux: &mut [&'a str], d: usize) {
+fn _msd<T: AsRef<[u8]> + Clone>(input: &mut [T], aux: &mut [T], d: usize) {
     if input.len() < 2 {
         return
     }
@@ -66,14 +58,14 @@ fn _msd<'a>(input: &mut [&'a str], aux: &mut [&'a str], d: usize) {
     input.iter().for_each(|word| count[byte_at(word.as_ref(), d)] += 1);
 
     (0 .. count.len() - 1).for_each(|i| count[i + 1] += count[i]); // compute indexes in the new array.
-    input.iter_mut().for_each(|word| {
+    input.iter().for_each(|word| {
         let index = byte_at(word.as_ref(), d) - 1;
-        aux[count[index]] = word;
+        aux[count[index]] = word.clone();
         count[index] += 1;
     });
 
     (0 .. input.len()).for_each(|i| {
-        input[i] = aux[i];
+        input[i] = aux[i].clone();
     });
 
     (0 .. RADIX + 1).for_each(|r| {
@@ -123,11 +115,12 @@ mod tests {
         #[test]
         fn basic() {
             let mut input = vec![
-                "John",
-                "Jack",
-                "Alex",
-                "Bell",
+                "John".to_owned(),
+                "Jack".to_owned(),
+                "Alex".to_owned(),
+                "Bell".to_owned(),
             ];
+
 
             msd(&mut input);
             assert_eq!(input, vec![

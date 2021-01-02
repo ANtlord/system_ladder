@@ -10,6 +10,7 @@ use std::ptr;
 use vector::sink;
 
 pub use quicksort::quicksort;
+pub use radixsort::msd;
 
 fn gcd(mut left: u64, mut right: u64) -> u64 {
     while right != 0 {
