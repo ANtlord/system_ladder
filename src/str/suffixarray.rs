@@ -46,6 +46,8 @@ fn lcp<T: AsRef<[u8]>>(input: &[T]) -> Vec<usize> {
 
 impl<'a> SuffixArray<'a> {
     // TODO: Replace MSD by Manber & Myers algorithm.
+    // TODO: Linear Suffix Array Construction by Almost Pure Induced-Sorting
+    // TODO: https://gist.github.com/sumanth232/e1600b327922b6947f51
     fn new(data: &'a str) -> Self {
         let mut suffixes: Vec<_> = (0 .. data.len()).into_iter()
             .map(|x| Suffix(x, &data[x .. ])).collect();
