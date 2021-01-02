@@ -36,8 +36,8 @@ fn lsd<T: AsRef<[u8]> + AsMut<[u8]>>(arr: &mut [T]) {
     }
 }
 
-fn msd(input: &mut [String]) {
-    let mut aux: Vec<String> = vec![String::default(); input.len()];
+fn msd(input: &mut [&str]) {
+    let mut aux: Vec<&str> = vec![""; input.len()];
     _msd(input, &mut aux, 0);
 }
 
@@ -56,7 +56,7 @@ fn printnonzero(arr: &[usize]) {
     });
 }
 
-fn _msd(input: &mut [String], aux: &mut [String], d: usize) {
+fn _msd<'a>(input: &mut [&'a str], aux: &mut [&'a str], d: usize) {
     if input.len() < 2 {
         return
     }
@@ -68,12 +68,12 @@ fn _msd(input: &mut [String], aux: &mut [String], d: usize) {
     (0 .. count.len() - 1).for_each(|i| count[i + 1] += count[i]); // compute indexes in the new array.
     input.iter_mut().for_each(|word| {
         let index = byte_at(word.as_ref(), d) - 1;
-        aux[count[index]] = word.split_off(0);
+        aux[count[index]] = word;
         count[index] += 1;
     });
 
     (0 .. input.len()).for_each(|i| {
-        input[i] = aux[i].split_off(0);
+        input[i] = aux[i];
     });
 
     (0 .. RADIX + 1).for_each(|r| {
@@ -123,31 +123,31 @@ mod tests {
         #[test]
         fn basic() {
             let mut input = vec![
-                "John".to_owned(),
-                "Jack".to_owned(),
-                "Alex".to_owned(),
-                "Bell".to_owned(),
+                "John",
+                "Jack",
+                "Alex",
+                "Bell",
             ];
 
             msd(&mut input);
             assert_eq!(input, vec![
-                "Alex".to_owned(),
-                "Bell".to_owned(),
-                "Jack".to_owned(),
-                "John".to_owned(),
+                "Alex",
+                "Bell",
+                "Jack",
+                "John",
             ]);
 
             let mut input = vec![
-                "cba".to_owned(),
-                "ba".to_owned(),
-                "a".to_owned(),
+                "cba",
+                "ba",
+                "a",
             ];
 
             msd(&mut input);
             assert_eq!(input, vec![
-                "a".to_owned(),
-                "ba".to_owned(),
-                "cba".to_owned(),
+                "a",
+                "ba",
+                "cba",
             ]);
         }
     }
