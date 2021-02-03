@@ -1,7 +1,9 @@
 mod rbtree;
 mod heap;
+mod btree;
 
 pub use rbtree::Tree;
+pub use btree::Btree;
 pub use heap::Heap;
 pub use heap::IndexedHeap;
 use crate::list::List;
